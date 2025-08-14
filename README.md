@@ -2,7 +2,7 @@
 
 Lightning-fast tab navigation with VSCode-style command palette. Navigate tabs at the speed of thought with powerful keyboard shortcuts and instant search.
 
-## 🚀 Key Features
+## Key Features
 
 ### 🐇Command Palette (Ctrl+P / Cmd+P)
 
