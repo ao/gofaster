@@ -129,6 +129,21 @@ bun test:watch
 bun test tests/core-functionality.test.js
 ```
 
+### Building and Deployment
+
+```bash
+# Build extension locally
+./scripts/build.sh
+
+# Deploy to Chrome Web Store (production)
+git tag v1.0.0 && git push origin v1.0.0
+
+# Create beta release
+git push origin develop
+```
+
+📚 **Complete deployment documentation:** [docs/README.md](docs/README.md)
+
 ### Test Coverage
 The extension includes comprehensive tests:
 - **Core functionality tests** - Essential features and workflows (✅ All passing)

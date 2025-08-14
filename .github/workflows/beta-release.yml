@@ -1,0 +1,110 @@
+name: Beta Release
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      beta_version:
+        description: 'Beta version (e.g., 1.0.0-beta.1)'
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run tests
+        run: bun test
+
+  create-beta:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate beta version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.beta_version }}"
+          else
+            # Generate beta version based on current date and commit
+            DATE=$(date +%Y%m%d)
+            SHORT_SHA=${GITHUB_SHA:0:7}
+            VERSION="1.0.0-beta.${DATE}.${SHORT_SHA}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Generated beta version: $VERSION"
+
+      - name: Update manifest for beta
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Update version in manifest
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" manifest.json
+          
+          # Add beta suffix to name
+          sed -i 's/"name": "GoFaster"/"name": "GoFaster (Beta)"/' manifest.json
+          
+          echo "Updated manifest.json for beta version $VERSION"
+
+      - name: Create beta package
+        run: |
+          mkdir -p build
+          cp -r popup build/
+          cp -r content build/
+          cp -r background build/
+          cp -r icons build/
+          cp manifest.json build/
+          
+          cd build
+          zip -r ../gofaster-beta-${{ steps.version.outputs.version }}.zip .
+          cd ..
+
+      - name: Upload beta artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-extension-beta-${{ steps.version.outputs.version }}
+          path: gofaster-beta-${{ steps.version.outputs.version }}.zip
+
+      - name: Create pre-release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: GoFaster Beta v${{ steps.version.outputs.version }}
+          body: |
+            🧪 **Beta Release**
+            
+            This is a beta version of GoFaster for testing purposes.
+            
+            **Changes in this beta:**
+            - Latest changes from develop branch
+            - Built from commit: ${{ github.sha }}
+            
+            **Installation:**
+            1. Download the `.zip` file below
+            2. Extract it to a folder
+            3. Go to `chrome://extensions/`
+            4. Enable "Developer mode"
+            5. Click "Load unpacked" and select the extracted folder
+            
+            **⚠️ Note:** This is a beta version and may contain bugs. Use at your own risk.
+          files: gofaster-beta-${{ steps.version.outputs.version }}.zip
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
