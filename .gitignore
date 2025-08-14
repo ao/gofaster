@@ -1,0 +1,18 @@
+node_modules/
+*.log
+.DS_Store
+bun.lock
+
+# Keep tests but ignore temporary test files
+test-*.html
+debug*.js
+*-debug.*
+*-fixed.*
+
+# Documentation files (keep main README)
+TROUBLESHOOTING*.md
+FIXES_SUMMARY.md
+INSTALLATION_DEBUG.md
+FIX_SERVICE_WORKER.md
+INSTALL.md
+manifest-*.json

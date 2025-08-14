@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoFaster</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="header">
+        <h1>⚡ GoFaster</h1>
+        <div class="keyboard-hint">Press <kbd>Ctrl+P</kbd> for command palette</div>
+        <div class="controls">
+            <input type="text" id="searchInput" placeholder="Search tabs..." />
+            <div class="action-buttons">
+                <button id="groupByDomain" title="Group by Domain">🌐</button>
+                <button id="closeSelected" title="Close Selected" disabled>🗑️</button>
+                <button id="selectAll" title="Select All">☑️</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="stats">
+        <span id="tabCount">0 tabs</span>
+        <span id="selectedCount">0 selected</span>
+    </div>
+    
+    <div class="tab-list" id="tabList">
+        <!-- Tabs will be populated here -->
+    </div>
+    
+    <div class="footer">
+        <button id="refreshTabs">🔄 Refresh</button>
+        <div class="shortcuts-info">
+            <span>💡 Use keyboard shortcuts for speed</span>
+        </div>
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>

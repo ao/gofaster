@@ -1,0 +1,20 @@
+{
+  "name": "gofaster-chrome-extension",
+  "version": "1.0.0",
+  "description": "Lightning-fast tab navigation with VSCode-style command palette",
+  "scripts": {
+    "test": "echo 'Running core functionality tests...' && bun test tests/core-functionality.test.js",
+    "test:all": "echo 'Running all tests (some may be flaky)...' && bun test tests/",
+    "test:core": "bun test tests/core-functionality.test.js",
+    "test:watch": "bun test --watch tests/core-functionality.test.js"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "bun-types": "latest",
+    "jsdom": "^24.0.0"
+  },
+  "type": "module",
+  "keywords": ["chrome-extension", "tab-management", "productivity"],
+  "author": "GoFaster Team",
+  "license": "MIT"
+}

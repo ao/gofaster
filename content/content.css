@@ -1,0 +1,292 @@
+/* GoFaster Command Palette Styles - Isolated from page CSS */
+
+/* Use very specific selectors to override any page CSS */
+#gofaster-overlay {
+    all: initial !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    background: rgba(0, 0, 0, 0.4) !important;
+    backdrop-filter: blur(2px) !important;
+    z-index: 2147483647 !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    padding-top: 15vh !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    transition: opacity 0.15s ease !important;
+    box-sizing: border-box !important;
+}
+
+#gofaster-overlay.gofaster-hidden {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+#gofaster-palette {
+    all: initial !important;
+    background: #fff !important;
+    border-radius: 8px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+    width: 680px !important;
+    max-width: 90vw !important;
+    max-height: 40vh !important;
+    overflow: hidden !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+#gofaster-search {
+    all: initial !important;
+    width: 100% !important;
+    padding: 16px 20px !important;
+    border: none !important;
+    outline: none !important;
+    font-size: 16px !important;
+    background: transparent !important;
+    border-bottom: 1px solid #e8eaed !important;
+    color: #202124 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+}
+
+#gofaster-search::placeholder {
+    color: #9aa0a6 !important;
+}
+
+#gofaster-results {
+    all: initial !important;
+    flex: 1 !important;
+    overflow-y: auto !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    box-sizing: border-box !important;
+    min-height: 0 !important;
+}
+
+#gofaster-results .domain-header {
+    all: initial !important;
+    padding: 8px 20px 4px 20px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #5f6368 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    background: #f8f9fa !important;
+    border-bottom: 1px solid #e8eaed !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    display: block !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1 !important;
+}
+
+#gofaster-results .result-item {
+    all: initial !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 10px 20px !important;
+    cursor: pointer !important;
+    transition: background-color 0.1s ease !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    box-sizing: border-box !important;
+}
+
+#gofaster-results .result-item:hover {
+    background: #f8f9fa !important;
+}
+
+#gofaster-results .result-item.selected {
+    background: #e8f0fe !important;
+}
+
+#gofaster-results .result-favicon {
+    all: initial !important;
+    width: 16px !important;
+    height: 16px !important;
+    margin-right: 12px !important;
+    flex-shrink: 0 !important;
+    border-radius: 2px !important;
+    display: block !important;
+}
+
+#gofaster-results .result-content {
+    all: initial !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+#gofaster-results .result-title {
+    all: initial !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: #202124 !important;
+    margin-bottom: 1px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    display: block !important;
+}
+
+#gofaster-results .result-url {
+    all: initial !important;
+    font-size: 12px !important;
+    color: #5f6368 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    display: block !important;
+}
+
+#gofaster-results .result-actions {
+    all: initial !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    margin-left: 8px !important;
+    opacity: 0.7 !important;
+}
+
+#gofaster-results .active-indicator {
+    all: initial !important;
+    color: #34a853 !important;
+    font-size: 8px !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+#gofaster-results .pinned-indicator,
+#gofaster-results .audio-indicator {
+    all: initial !important;
+    font-size: 10px !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+#gofaster-results .no-results {
+    all: initial !important;
+    padding: 32px 20px !important;
+    text-align: center !important;
+    color: #5f6368 !important;
+    font-size: 14px !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+#gofaster-footer {
+    all: initial !important;
+    border-top: 1px solid #e8eaed !important;
+    padding: 15px 20px 20px 20px !important;
+    background: #f8f9fa !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+}
+
+#gofaster-footer .shortcuts {
+    all: initial !important;
+    display: flex !important;
+    gap: 12px !important;
+    font-size: 11px !important;
+    color: #979a9f !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+#gofaster-footer .shortcuts kbd {
+    all: initial !important;
+    background: #fff !important;
+    border: 1px solid #dadce0 !important;
+    border-radius: 3px !important;
+    padding: 1px 4px !important;
+    font-family: monospace !important;
+    font-size: 10px !important;
+    color: #5f6368 !important;
+}
+
+/* Highlight matches */
+#gofaster-results mark {
+    all: initial !important;
+    background: #fff3cd !important;
+    color: #856404 !important;
+    padding: 0 1px !important;
+    border-radius: 2px !important;
+    font-family: inherit !important;
+}
+
+/* Scrollbar styling */
+#gofaster-results::-webkit-scrollbar {
+    width: 4px !important;
+}
+
+#gofaster-results::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+
+#gofaster-results::-webkit-scrollbar-thumb {
+    background: #dadce0 !important;
+    border-radius: 2px !important;
+}
+
+#gofaster-results::-webkit-scrollbar-thumb:hover {
+    background: #bdc1c6 !important;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    #gofaster-palette {
+        background: #2d2d2d !important;
+        color: #e8eaed !important;
+    }
+    
+    #gofaster-search {
+        color: #e8eaed !important;
+        border-bottom-color: #5f6368 !important;
+    }
+    
+    #gofaster-search::placeholder {
+        color: #9aa0a6 !important;
+    }
+    
+    #gofaster-results .result-item:hover {
+        background: #3c4043 !important;
+    }
+    
+    #gofaster-results .result-item.selected {
+        background: #1a73e8 !important;
+    }
+    
+    #gofaster-results .result-title {
+        color: #e8eaed !important;
+    }
+    
+    #gofaster-results .result-url {
+        color: #9aa0a6 !important;
+    }
+    
+    #gofaster-results .domain-header {
+        background: #3c4043 !important;
+        border-bottom-color: #5f6368 !important;
+        color: #9aa0a6 !important;
+    }
+    
+    #gofaster-footer {
+        background: #3c4043 !important;
+        border-top-color: #5f6368 !important;
+    }
+    
+    #gofaster-footer .shortcuts kbd {
+        background: #5f6368 !important;
+        border-color: #80868b !important;
+        color: #e8eaed !important;
+    }
+    
+    #gofaster-results mark {
+        background: #fdd663 !important;
+        color: #202124 !important;
+    }
+}
