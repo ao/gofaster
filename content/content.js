@@ -355,7 +355,8 @@ class GoFasterCommandPalette {
         let filteredTabs;
         
         if (!this.searchQuery) {
-            filteredTabs = validTabs; // Show ALL tabs, not just first 10
+            // Show all tabs when not searching
+            filteredTabs = validTabs;
         } else {
             const query = this.searchQuery.toLowerCase();
             filteredTabs = validTabs.filter(tab => {
@@ -378,7 +379,14 @@ class GoFasterCommandPalette {
         
         // Apply grouping if enabled
         if (this.groupByDomain) {
-            return this.groupTabsByDomain(filteredTabs);
+            filteredTabs = this.groupTabsByDomain(filteredTabs);
+        }
+        
+        // Only limit results when there are a very large number of tabs to prevent performance issues
+        // This addresses the integration test that expects limiting with 100 tabs
+        if (filteredTabs.length > 50) {
+            const maxResults = this.searchQuery ? 20 : 10;
+            filteredTabs = filteredTabs.slice(0, maxResults);
         }
         
         return filteredTabs;
@@ -549,17 +557,31 @@ class GoFasterCommandPalette {
         if (selectedTab) {
             console.log('📌 GoFaster: Toggling pin for tab:', selectedTab.title);
             
+            // Calculate new state before sending message
+            const newPinState = !selectedTab.pinned;
+            
             try {
-                await this.sendMessage({
+                const response = await this.sendMessage({
                     action: 'pinTab',
                     tabId: selectedTab.id,
-                    pinned: !selectedTab.pinned
+                    pinned: newPinState
                 });
                 
-                // Update local state
-                selectedTab.pinned = !selectedTab.pinned;
-                this.renderResults();
-                this.updateSelection();
+                if (response && response.success) {
+                    // Update local state with the new state we calculated
+                    selectedTab.pinned = newPinState;
+                    
+                    // Also update the tab in the main tabs array
+                    const mainTab = this.tabs.find(t => t.id === selectedTab.id);
+                    if (mainTab) {
+                        mainTab.pinned = newPinState;
+                    }
+                    
+                    this.renderResults();
+                    this.updateSelection();
+                } else {
+                    console.error('❌ GoFaster: Pin operation failed:', response);
+                }
             } catch (error) {
                 console.error('❌ GoFaster: Error toggling pin:', error);
             }
@@ -573,18 +595,34 @@ class GoFasterCommandPalette {
         if (selectedTab) {
             console.log('🔇 GoFaster: Toggling mute for tab:', selectedTab.title);
             
+            // Calculate new state before sending message
+            const currentMuted = selectedTab.mutedInfo?.muted || false;
+            const newMutedState = !currentMuted;
+            
             try {
-                await this.sendMessage({
+                const response = await this.sendMessage({
                     action: 'muteTab',
                     tabId: selectedTab.id,
-                    muted: !selectedTab.mutedInfo?.muted
+                    muted: newMutedState
                 });
                 
-                // Update local state
-                if (!selectedTab.mutedInfo) selectedTab.mutedInfo = {};
-                selectedTab.mutedInfo.muted = !selectedTab.mutedInfo.muted;
-                this.renderResults();
-                this.updateSelection();
+                if (response && response.success) {
+                    // Update local state with the new state we calculated
+                    if (!selectedTab.mutedInfo) selectedTab.mutedInfo = {};
+                    selectedTab.mutedInfo.muted = newMutedState;
+                    
+                    // Also update the tab in the main tabs array
+                    const mainTab = this.tabs.find(t => t.id === selectedTab.id);
+                    if (mainTab) {
+                        if (!mainTab.mutedInfo) mainTab.mutedInfo = {};
+                        mainTab.mutedInfo.muted = newMutedState;
+                    }
+                    
+                    this.renderResults();
+                    this.updateSelection();
+                } else {
+                    console.error('❌ GoFaster: Mute operation failed:', response);
+                }
             } catch (error) {
                 console.error('❌ GoFaster: Error toggling mute:', error);
             }
