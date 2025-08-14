@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GoFaster",
   "version": "1.0.2",
-  "description": "Lightning-fast tab navigation with VSCode-style command palette. Use Ctrl+P to search tabs, find content, and navigate at the speed of thought.",
+  "description": "Lightning-fast tab navigation with VSCode-style command palette. Press Ctrl+P to search and switch tabs instantly.",
   "permissions": [
     "tabs",
     "storage",

@@ -16,3 +16,6 @@ INSTALLATION_DEBUG.md
 FIX_SERVICE_WORKER.md
 INSTALL.md
 manifest-*.json
+
+build
+dist
