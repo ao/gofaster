@@ -311,8 +311,38 @@ class GoFasterCommandPalette {
         
         // Listen for keyboard shortcuts
         document.addEventListener('keydown', (e) => {
+            // Debug: Log all keydown events when in link hint mode
+            if (this.linkHintMode) {
+                console.log('🔗 DEBUG: Keydown event in link hint mode:', e.key, 'linkHintMode:', this.linkHintMode);
+            }
+            
             // Skip all functionality if extension is disabled
             if (!this.extensionEnabled) {
+                return;
+            }
+            
+            // Handle link hint mode FIRST (highest priority)
+            if (this.linkHintMode) {
+                this.log('🔗 GoFaster: In link hint mode, handling key:', e.key);
+                
+                if (e.key === 'Escape') {
+                    this.log('🔗 GoFaster: Escape pressed, exiting link hint mode');
+                    e.preventDefault();
+                    this.exitLinkHintMode();
+                    return;
+                }
+                
+                // Check if pressed key matches any hint
+                const key = e.key.toLowerCase();
+                if (key.match(/[a-z]/)) {
+                    this.log('🔗 GoFaster: Letter key pressed:', key);
+                    e.preventDefault();
+                    this.handleLinkHintKey(key);
+                    return;
+                }
+                
+                // If in link hint mode but key doesn't match, consume the event
+                e.preventDefault();
                 return;
             }
             
@@ -380,6 +410,7 @@ class GoFasterCommandPalette {
                 
                 // f - Enter link hint mode
                 if (e.key === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                    console.log('🔗 DEBUG: F key pressed, entering link hint mode');
                     e.preventDefault();
                     this.enterLinkHintMode();
                     return;
@@ -500,27 +531,6 @@ class GoFasterCommandPalette {
                             this.toggleDebugMode();
                         }
                         break;
-                }
-            }
-            
-            // Handle link hint mode
-            if (this.linkHintMode) {
-                this.log('🔗 GoFaster: In link hint mode, handling key:', e.key);
-                
-                if (e.key === 'Escape') {
-                    this.log('🔗 GoFaster: Escape pressed, exiting link hint mode');
-                    e.preventDefault();
-                    this.exitLinkHintMode();
-                    return;
-                }
-                
-                // Check if pressed key matches any hint
-                const key = e.key.toLowerCase();
-                if (key.match(/[a-z]/)) {
-                    this.log('🔗 GoFaster: Letter key pressed:', key);
-                    e.preventDefault();
-                    this.handleLinkHintKey(key);
-                    return;
                 }
             }
         });
