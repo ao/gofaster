@@ -504,8 +504,11 @@ class GoFasterCommandPalette {
             }
             
             // Handle link hint mode
-            if (this.linkHintMode && !this.isOpen) {
+            if (this.linkHintMode) {
+                this.log('🔗 GoFaster: In link hint mode, handling key:', e.key);
+                
                 if (e.key === 'Escape') {
+                    this.log('🔗 GoFaster: Escape pressed, exiting link hint mode');
                     e.preventDefault();
                     this.exitLinkHintMode();
                     return;
@@ -514,6 +517,7 @@ class GoFasterCommandPalette {
                 // Check if pressed key matches any hint
                 const key = e.key.toLowerCase();
                 if (key.match(/[a-z]/)) {
+                    this.log('🔗 GoFaster: Letter key pressed:', key);
                     e.preventDefault();
                     this.handleLinkHintKey(key);
                     return;
@@ -2027,7 +2031,10 @@ class GoFasterCommandPalette {
     
     // Link hinting functionality
     enterLinkHintMode() {
-        if (this.linkHintMode) return;
+        if (this.linkHintMode) {
+            this.log('🔗 GoFaster: Already in link hint mode');
+            return;
+        }
         
         this.log('🔗 GoFaster: Entering link hint mode');
         this.linkHintMode = true;
@@ -2040,10 +2047,15 @@ class GoFasterCommandPalette {
         
         // Show visual feedback
         this.showLinkHintFeedback();
+        
+        this.log('🔗 GoFaster: Link hint mode activated with', this.linkHints.length, 'hints');
     }
     
     exitLinkHintMode() {
-        if (!this.linkHintMode) return;
+        if (!this.linkHintMode) {
+            this.log('🔗 GoFaster: Not in link hint mode');
+            return;
+        }
         
         this.log('🔗 GoFaster: Exiting link hint mode');
         this.linkHintMode = false;
@@ -2061,6 +2073,8 @@ class GoFasterCommandPalette {
         
         // Hide feedback
         this.hideLinkHintFeedback();
+        
+        this.log('🔗 GoFaster: Link hint mode deactivated');
     }
     
     findClickableElements() {
@@ -2159,13 +2173,19 @@ class GoFasterCommandPalette {
     }
     
     handleLinkHintKey(key) {
+        this.log('🔗 GoFaster: Handling link hint key:', key);
+        this.log('🔗 GoFaster: Current hints:', this.linkHints.map(h => h.textContent));
+        
         // Find matching hint
         const matchingIndex = this.linkHints.findIndex(hint => 
             hint.textContent.toLowerCase().startsWith(key)
         );
         
+        this.log('🔗 GoFaster: Matching index:', matchingIndex);
+        
         if (matchingIndex === -1) {
             // No match, exit hint mode
+            this.log('🔗 GoFaster: No match found, exiting hint mode');
             this.exitLinkHintMode();
             return;
         }
@@ -2175,9 +2195,12 @@ class GoFasterCommandPalette {
             hint.textContent.toLowerCase() === key
         );
         
+        this.log('🔗 GoFaster: Exact match index:', exactMatch);
+        
         if (exactMatch !== -1) {
             // Exact match found, click the element
             const element = this.clickableElements[exactMatch];
+            this.log('🔗 GoFaster: Clicking element:', element);
             this.clickElement(element);
             this.exitLinkHintMode();
             return;
@@ -2204,9 +2227,12 @@ class GoFasterCommandPalette {
         this.linkHints = remainingHints;
         this.clickableElements = remainingElements;
         
+        this.log('🔗 GoFaster: Remaining hints:', this.linkHints.length);
+        
         // If only one hint remains and it's empty, click it
         if (this.linkHints.length === 1 && this.linkHints[0].textContent === '') {
             const element = this.clickableElements[0];
+            this.log('🔗 GoFaster: Auto-clicking last remaining element:', element);
             this.clickElement(element);
             this.exitLinkHintMode();
         }
