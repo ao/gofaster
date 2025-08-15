@@ -78,9 +78,10 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chrome-extension-ci-${{ github.sha }}
+          name: chrome-extension-ci-${{ github.sha }}-${{ github.run_number }}
           path: gofaster-ci-build.zip
           retention-days: 7
+          overwrite: true
 
   lint:
     runs-on: ubuntu-latest
