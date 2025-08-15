@@ -269,6 +269,36 @@ class GoFasterCommandPalette {
         }
     }
     
+    // Helper function to check if user is currently in an input field
+    isInInputField() {
+        const activeElement = document.activeElement;
+        if (!activeElement) return false;
+        
+        const tagName = activeElement.tagName.toLowerCase();
+        const inputTypes = ['input', 'textarea', 'select'];
+        
+        // Check if it's an input element
+        if (inputTypes.includes(tagName)) {
+            return true;
+        }
+        
+        // Check if it's a contenteditable element
+        if (activeElement.contentEditable === 'true') {
+            return true;
+        }
+        
+        // Check if it's inside a contenteditable element
+        let parent = activeElement.parentElement;
+        while (parent) {
+            if (parent.contentEditable === 'true') {
+                return true;
+            }
+            parent = parent.parentElement;
+        }
+        
+        return false;
+    }
+    
     bindEvents() {
         this.log('🔗 GoFaster: Binding events');
         
@@ -301,6 +331,12 @@ class GoFasterCommandPalette {
                 if ((e.ctrlKey || e.metaKey) && e.key === 'y' && !e.shiftKey) {
                     e.preventDefault();
                     window.scrollBy(0, -20);
+                    return;
+                }
+                
+                // Skip non-Ctrl vim keys if user is typing in an input field
+                if (this.isInInputField()) {
+                    // Allow Ctrl-based shortcuts to work normally, but skip single-key vim commands
                     return;
                 }
                 
