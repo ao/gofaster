@@ -2238,17 +2238,16 @@ class GoFasterCommandPalette {
     }
     
     showLinkHintFeedback() {
-        // Create feedback message
-        const feedback = document.createElement('div');
-        feedback.id = 'gofaster-link-hint-feedback';
-        feedback.style.cssText = `
+        // Create temporary notification similar to debug mode notification
+        const notification = document.createElement('div');
+        notification.id = 'gofaster-link-hint-feedback';
+        notification.style.cssText = `
             position: fixed !important;
             top: 20px !important;
-            left: 50% !important;
-            transform: translateX(-50%) !important;
-            background: #2d3748 !important;
+            right: 20px !important;
+            background: #34a853 !important;
             color: white !important;
-            padding: 8px 16px !important;
+            padding: 12px 20px !important;
             border-radius: 6px !important;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
             font-size: 14px !important;
@@ -2256,13 +2255,36 @@ class GoFasterCommandPalette {
             z-index: 2147483647 !important;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
             pointer-events: none !important;
+            animation: slideInOut 4s ease-in-out !important;
         `;
-        feedback.textContent = '🔗 Link Hint Mode - Press a letter to click, Esc to cancel';
+        notification.textContent = '🔗 Link Hint Mode - Press letters to click, Esc to cancel';
         
-        document.body.appendChild(feedback);
+        // Add animation keyframes
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideInOut {
+                0% { opacity: 0; transform: translateX(100%); }
+                15% { opacity: 1; transform: translateX(0); }
+                85% { opacity: 1; transform: translateX(0); }
+                100% { opacity: 0; transform: translateX(100%); }
+            }
+        `;
+        document.head.appendChild(style);
+        document.body.appendChild(notification);
+        
+        // Remove after animation completes
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+            if (style.parentNode) {
+                style.parentNode.removeChild(style);
+            }
+        }, 4000);
     }
     
     hideLinkHintFeedback() {
+        // Remove any existing feedback (in case user exits before animation completes)
         const feedback = document.getElementById('gofaster-link-hint-feedback');
         if (feedback && feedback.parentNode) {
             feedback.parentNode.removeChild(feedback);
