@@ -10,8 +10,9 @@ class GoFasterCommandPalette {
         this.searchQuery = '';
         this.isLoading = false;
         this.groupByDomain = false; // Add grouping state
-        this.searchMode = 'tabs'; // 'tabs' or 'content'
+        this.paletteMode = 'tabs'; // 'tabs' or 'content' - determines which palette is active
         this.debugMode = false; // Debug mode flag
+        this.lastGKeyTime = null; // For vim gg mapping
         
         // Initialize debug mode synchronously first, then async
         this.initializeDebugModeSync();
@@ -233,7 +234,7 @@ class GoFasterCommandPalette {
         this.searchInput = document.createElement('input');
         this.searchInput.id = 'gofaster-search';
         this.searchInput.type = 'text';
-        this.searchInput.placeholder = 'Search tabs, content, or commands...';
+        this.updatePlaceholder(); // Set placeholder based on mode
         this.searchInput.autocomplete = 'off';
         this.searchInput.spellcheck = false;
         
@@ -258,20 +259,81 @@ class GoFasterCommandPalette {
         this.log('✅ GoFaster: Palette DOM created');
     }
     
+    updatePlaceholder() {
+        if (!this.searchInput) return;
+        
+        if (this.paletteMode === 'content') {
+            this.searchInput.placeholder = 'Search page content across all tabs...';
+        } else {
+            this.searchInput.placeholder = 'Search tabs by title and domain...';
+        }
+    }
+    
     bindEvents() {
         this.log('🔗 GoFaster: Binding events');
         
         // Listen for keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Ctrl+P / Cmd+P to toggle palette
+            // Vim mappings when palette is NOT open
+            if (!this.isOpen) {
+                // Ctrl+D - Scroll down half page
+                if ((e.ctrlKey || e.metaKey) && e.key === 'd' && !e.shiftKey) {
+                    e.preventDefault();
+                    window.scrollBy(0, window.innerHeight / 2);
+                    return;
+                }
+                
+                // Ctrl+U - Scroll up half page
+                if ((e.ctrlKey || e.metaKey) && e.key === 'u' && !e.shiftKey) {
+                    e.preventDefault();
+                    window.scrollBy(0, -window.innerHeight / 2);
+                    return;
+                }
+                
+                // Ctrl+E - Scroll down one line
+                if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !e.shiftKey) {
+                    e.preventDefault();
+                    window.scrollBy(0, 20);
+                    return;
+                }
+                
+                // Ctrl+Y - Scroll up one line
+                if ((e.ctrlKey || e.metaKey) && e.key === 'y' && !e.shiftKey) {
+                    e.preventDefault();
+                    window.scrollBy(0, -20);
+                    return;
+                }
+                
+                // gg - Go to top (need to handle double 'g')
+                if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                    if (this.lastGKeyTime && Date.now() - this.lastGKeyTime < 500) {
+                        // Double 'g' pressed within 500ms
+                        e.preventDefault();
+                        window.scrollTo(0, 0);
+                        this.lastGKeyTime = null;
+                        return;
+                    } else {
+                        this.lastGKeyTime = Date.now();
+                        return;
+                    }
+                }
+                
+                // G - Go to bottom
+                if (e.key === 'G' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                    window.scrollTo(0, document.body.scrollHeight);
+                    return;
+                }
+            }
+            
+            // Ctrl+P / Cmd+P to open tab search palette
             if ((e.ctrlKey || e.metaKey) && e.key === 'p' && !e.shiftKey) {
                 e.preventDefault();
-                this.log('⌨️ GoFaster: Ctrl+P detected');
+                this.log('⌨️ GoFaster: Ctrl+P detected - opening tab search');
                 
                 // Check if extension context is still valid
                 if (!this.isExtensionContextValid()) {
                     this.warn('⚠️ GoFaster: Extension context invalidated, showing message');
-                    // Create a temporary overlay to show the message
                     if (!this.isOpen) {
                         this.isOpen = true;
                         this.overlay.classList.remove('gofaster-hidden');
@@ -280,7 +342,27 @@ class GoFasterCommandPalette {
                     return;
                 }
                 
-                this.toggle();
+                this.openTabSearch();
+                return;
+            }
+            
+            // Ctrl+F / Cmd+F to open content search palette
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !e.shiftKey) {
+                e.preventDefault();
+                this.log('⌨️ GoFaster: Ctrl+F detected - opening content search');
+                
+                // Check if extension context is still valid
+                if (!this.isExtensionContextValid()) {
+                    this.warn('⚠️ GoFaster: Extension context invalidated, showing message');
+                    if (!this.isOpen) {
+                        this.isOpen = true;
+                        this.overlay.classList.remove('gofaster-hidden');
+                        this.showExtensionInvalidatedMessage();
+                    }
+                    return;
+                }
+                
+                this.openContentSearch();
                 return;
             }
             
@@ -304,34 +386,49 @@ class GoFasterCommandPalette {
                         this.executeSelected();
                         break;
                     case 'p':
-                        // Pin/unpin selected tab (only with Shift to avoid conflict)
                         if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+                            // Pin/unpin selected tab (only in tab mode)
+                            if (this.paletteMode === 'tabs') {
+                                e.preventDefault();
+                                this.togglePinSelected();
+                            }
+                        } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                            // Switch to tab search mode
                             e.preventDefault();
-                            this.togglePinSelected();
+                            this.switchToTabSearch();
+                        }
+                        break;
+                    case 'f':
+                        // Switch to content search mode
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            this.switchToContentSearch();
                         }
                         break;
                     case 'm':
-                        // Mute/unmute selected tab
-                        if (e.ctrlKey || e.metaKey) {
+                        // Mute/unmute selected tab (only in tab mode)
+                        if ((e.ctrlKey || e.metaKey) && this.paletteMode === 'tabs') {
                             e.preventDefault();
                             this.toggleMuteSelected();
                         }
                         break;
                     case 'x':
-                        // Close selected tab
-                        if (e.ctrlKey || e.metaKey) {
+                        // Close selected tab (only in tab mode)
+                        if ((e.ctrlKey || e.metaKey) && this.paletteMode === 'tabs') {
                             e.preventDefault();
                             this.closeSelected();
                         }
                         break;
                     case 'Delete':
-                        // Alternative close shortcut
-                        e.preventDefault();
-                        this.closeSelected();
+                        // Alternative close shortcut (only in tab mode)
+                        if (this.paletteMode === 'tabs') {
+                            e.preventDefault();
+                            this.closeSelected();
+                        }
                         break;
                     case 'g':
-                        // Toggle grouping with Ctrl+G
-                        if (e.ctrlKey || e.metaKey) {
+                        // Toggle grouping with Ctrl+G (only in tab mode)
+                        if ((e.ctrlKey || e.metaKey) && this.paletteMode === 'tabs') {
                             e.preventDefault();
                             this.toggleGrouping();
                         }
@@ -350,18 +447,26 @@ class GoFasterCommandPalette {
         // Search input events
         this.searchInput.addEventListener('input', (e) => {
             this.searchQuery = e.target.value;
-            this.log('🔍 GoFaster: Search query changed:', this.searchQuery);
-            
-            // Determine search mode based on query
-            if (this.searchQuery.length >= 3 && this.searchQuery.includes(' ')) {
-                // Longer queries with spaces are likely content searches
-                this.searchMode = 'content';
-            } else {
-                // Short queries or single words are tab searches
-                this.searchMode = 'tabs';
-            }
+            this.log('🔍 GoFaster: Search query changed:', `"${this.searchQuery}" (mode: ${this.paletteMode})`);
             
             this.updateResults();
+        });
+        
+        // Handle keyboard shortcuts when search input is focused
+        this.searchInput.addEventListener('keydown', (e) => {
+            // Ctrl+P / Cmd+P to switch to tab search
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p' && !e.shiftKey) {
+                e.preventDefault();
+                this.switchToTabSearch();
+                return;
+            }
+            
+            // Ctrl+F / Cmd+F to switch to content search
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !e.shiftKey) {
+                e.preventDefault();
+                this.switchToContentSearch();
+                return;
+            }
         });
         
         // Click outside to close
@@ -398,7 +503,14 @@ class GoFasterCommandPalette {
             this.log('📨 GoFaster: Received message:', request.action);
             
             if (request.action === 'openCommandPalette') {
-                this.open();
+                const mode = request.mode || 'tabs';
+                this.log('🎯 GoFaster: Opening palette in mode:', mode);
+                
+                if (mode === 'content') {
+                    this.openContentSearch();
+                } else {
+                    this.openTabSearch();
+                }
             } else if (request.action === 'updateTabs') {
                 this.tabs = request.tabs;
                 if (this.isOpen) {
@@ -427,6 +539,18 @@ class GoFasterCommandPalette {
         }
     }
     
+    async openTabSearch() {
+        this.log('🎯 GoFaster: Opening tab search palette');
+        this.paletteMode = 'tabs';
+        await this.open();
+    }
+    
+    async openContentSearch() {
+        this.log('🔍 GoFaster: Opening content search palette');
+        this.paletteMode = 'content';
+        await this.open();
+    }
+    
     async toggle() {
         if (!this.isExtensionContextValid()) {
             this.warn('⚠️ GoFaster: Extension context invalidated, cannot toggle palette');
@@ -436,14 +560,15 @@ class GoFasterCommandPalette {
         if (this.isOpen) {
             this.close();
         } else {
-            await this.open();
+            // Default to tab search when toggling
+            await this.openTabSearch();
         }
     }
     
     async open() {
         if (this.isOpen) return;
         
-        this.log('🚪 GoFaster: Opening command palette');
+        this.log('🚪 GoFaster: Opening palette in mode:', this.paletteMode);
         
         this.isOpen = true;
         this.overlay.classList.remove('gofaster-hidden');
@@ -452,8 +577,12 @@ class GoFasterCommandPalette {
         this.selectedIndex = 0;
         this.isLoading = true;
         
+        // Update placeholder and footer for current mode
+        this.updatePlaceholder();
+        this.updateFooter();
+        
         // Show loading state immediately
-        this.results.innerHTML = '<div class="no-results">Loading tabs...</div>';
+        this.results.innerHTML = '<div class="no-results"><div class="no-results-title">Loading tabs...</div></div>';
         
         // Load tabs first, then update results
         try {
@@ -479,8 +608,8 @@ class GoFasterCommandPalette {
             
             this.results.innerHTML = `
                 <div class="no-results">
-                    ${errorMessage}<br>
-                    <small>Press Escape to close</small>
+                    <div class="no-results-title">${errorMessage}</div>
+                    <div class="no-results-subtitle">Press Escape to close</div>
                 </div>
             `;
         }
@@ -562,23 +691,30 @@ class GoFasterCommandPalette {
     }
     
     async updateResults() {
-        this.log('🔄 GoFaster: Updating results. Mode:', this.searchMode, 'Query:', this.searchQuery, 'Loading:', this.isLoading);
+        this.log('🔄 GoFaster: Updating results. Mode:', this.paletteMode, 'Query:', `"${this.searchQuery}"`);
         
-        // Don't block search if we're just loading tabs initially
-        // Only block if we're in the middle of a content search
-        if (this.isLoading && this.searchMode === 'content') {
-            this.results.innerHTML = '<div class="no-results">Loading...</div>';
-            return;
-        }
+        const trimmedQuery = this.searchQuery.trim();
         
-        if (this.searchMode === 'content' && this.searchQuery.length >= 3) {
-            await this.performContentSearch();
+        if (this.paletteMode === 'content') {
+            if (trimmedQuery.length >= 1) {
+                await this.performSimpleContentSearch();
+            } else {
+                // Show instructions for content search
+                this.showContentSearchInstructions();
+            }
         } else {
+            // Tab search mode
             this.performTabSearch();
         }
         
         this.renderResults();
         this.updateSelection();
+    }
+    
+    showContentSearchInstructions() {
+        this.contentResults = [];
+        this.filteredTabs = [];
+        // Results will be rendered by renderResults()
     }
     
     performTabSearch() {
@@ -587,40 +723,195 @@ class GoFasterCommandPalette {
         this.log('📊 GoFaster: Filtered to', this.filteredTabs.length, 'tabs');
     }
     
-    async performContentSearch() {
-        this.log('🔍 GoFaster: Performing content search for:', this.searchQuery);
+    // New simplified content search approach
+    async performSimpleContentSearch() {
+        const trimmedQuery = this.searchQuery.trim();
+        this.log('🔍 GoFaster: Starting simple content search for:', `"${trimmedQuery}"`);
         
-        this.isLoading = true;
-        this.results.innerHTML = '<div class="no-results">Searching page content...</div>';
-        
-        try {
-            const response = await this.sendMessage({
-                action: 'searchContent',
-                query: this.searchQuery
-            });
-            
-            if (response && response.success) {
-                this.contentResults = response.results || [];
-                this.filteredTabs = [];
-                this.log('✅ GoFaster: Content search found', this.contentResults.length, 'results');
-            } else {
-                this.error('❌ GoFaster: Content search failed:', response?.error);
-                this.contentResults = [];
-                this.filteredTabs = [];
-            }
-        } catch (error) {
-            this.error('❌ GoFaster: Content search error:', error);
+        if (!trimmedQuery || trimmedQuery.length < 1) {
+            this.log('⚠️ GoFaster: Query too short for content search');
             this.contentResults = [];
             this.filteredTabs = [];
-            
-            // Show user-friendly error for context invalidation
-            if (error.message.includes('Extension context invalidated')) {
-                this.results.innerHTML = '<div class="no-results">Extension was reloaded. Please refresh this page.</div>';
-                return;
+            return;
+        }
+        
+        this.isLoading = true;
+        this.results.innerHTML = '<div class="no-results"><div class="no-results-title">Searching page content...</div></div>';
+        
+        try {
+            // Get all tabs first
+            const tabsResponse = await this.sendMessage({ action: 'getTabs' });
+            if (!tabsResponse || !tabsResponse.tabs) {
+                throw new Error('Failed to get tabs');
             }
+            
+            const tabs = tabsResponse.tabs;
+            this.log('📋 GoFaster: Got', tabs.length, 'tabs to search');
+            
+            // Filter out system pages first
+            const searchableTabs = tabs.filter(tab => {
+                if (tab.url.startsWith('chrome://') || 
+                    tab.url.startsWith('chrome-extension://') || 
+                    tab.url.startsWith('about:') ||
+                    tab.url.startsWith('moz-extension://') ||
+                    tab.url.startsWith('edge://')) {
+                    this.log('⏭️ GoFaster: Skipping system page:', tab.title);
+                    return false;
+                }
+                return true;
+            });
+            
+            this.log('🎯 GoFaster: Searching', searchableTabs.length, 'searchable tabs');
+            
+            // Search current tab first, then others (search up to 20 tabs)
+            const currentTab = searchableTabs.find(tab => tab.active);
+            const otherTabs = searchableTabs.filter(tab => !tab.active);
+            const tabsToSearch = currentTab ? 
+                [currentTab, ...otherTabs.slice(0, 19)] : 
+                searchableTabs.slice(0, 20);
+            
+            this.log('🔍 GoFaster: Will search', tabsToSearch.length, 'tabs');
+            
+            const contentResults = [];
+            let searchedCount = 0;
+            let errorCount = 0;
+            
+            // Search each tab
+            for (const tab of tabsToSearch) {
+                try {
+                    searchedCount++;
+                    this.log(`🔍 Searching tab ${searchedCount}/${tabsToSearch.length}:`, tab.title);
+                    
+                    // Update progress in UI
+                    this.results.innerHTML = `<div class="no-results"><div class="no-results-title">Searching tabs... (${searchedCount}/${tabsToSearch.length})</div></div>`;
+                    
+                    // Search this specific tab
+                    const result = await this.searchTabContent(tab, trimmedQuery);
+                    if (result && result.totalMatches > 0) {
+                        contentResults.push(result);
+                        this.log('✅ Found', result.totalMatches, 'matches in', tab.title);
+                    } else {
+                        this.log('⚪ No matches in', tab.title);
+                    }
+                } catch (error) {
+                    errorCount++;
+                    this.log('⚠️ Could not search tab', tab.title, ':', error.message);
+                    
+                    // Don't let too many errors stop the search
+                    if (errorCount > 5) {
+                        this.log('⚠️ Too many search errors, stopping search');
+                        break;
+                    }
+                }
+            }
+            
+            this.contentResults = contentResults;
+            this.filteredTabs = [];
+            this.log('✅ GoFaster: Content search completed');
+            this.log(`   📊 Results: ${contentResults.length} tabs with matches`);
+            this.log(`   📈 Stats: ${searchedCount} searched, ${errorCount} errors`);
+            
+        } catch (error) {
+            this.error('❌ GoFaster: Simple content search failed:', error);
+            this.contentResults = [];
+            this.filteredTabs = [];
         } finally {
             this.isLoading = false;
         }
+    }
+    
+    // Search content in a specific tab
+    async searchTabContent(tab, query) {
+        try {
+            // Check if this is the current tab by getting current tab info
+            const currentTabResponse = await this.sendMessage({ action: 'getCurrentTab' });
+            const currentTabId = currentTabResponse?.tab?.id;
+            
+            // If this is the current tab, search directly (faster and more reliable)
+            if (currentTabId && tab.id === currentTabId) {
+                this.log('🎯 GoFaster: Searching current tab directly (ID:', tab.id, ')');
+                return this.searchCurrentPageContent(query);
+            }
+            
+            // For other tabs, ask background script to inject and search
+            this.log('🔍 GoFaster: Requesting background script to search tab:', tab.title, `(ID: ${tab.id})`);
+            
+            const response = await this.sendMessage({
+                action: 'searchTabContent',
+                tabId: tab.id,
+                query: query
+            });
+            
+            if (response && response.success) {
+                this.log('✅ GoFaster: Background script search successful for tab:', tab.title);
+                this.log(`   📊 Found ${response.totalMatches} matches in tab`);
+                
+                return {
+                    tab: tab,
+                    matches: response.matches || [],
+                    totalMatches: response.totalMatches || 0
+                };
+            } else {
+                this.log('⚠️ GoFaster: Background script search failed:', response?.error);
+                return null;
+            }
+            
+        } catch (error) {
+            this.log('⚠️ GoFaster: Failed to search tab content:', error.message);
+            return null;
+        }
+    }
+    
+    // Search content in the current page directly
+    searchCurrentPageContent(query) {
+        this.log('🔍 GoFaster: Searching current page content for:', query);
+        
+        const queryLower = query.toLowerCase();
+        const matches = [];
+        let totalMatches = 0;
+        
+        // Get all text content from the current page
+        const bodyText = document.body ? document.body.textContent : '';
+        if (!bodyText) {
+            this.log('⚠️ GoFaster: No body text found on current page');
+            return { tab: { title: document.title, url: window.location.href }, matches: [], totalMatches: 0 };
+        }
+        
+        this.log('📄 GoFaster: Current page has', bodyText.length, 'characters of text');
+        
+        const text = bodyText.toLowerCase();
+        let index = 0;
+        
+        while ((index = text.indexOf(queryLower, index)) !== -1) {
+            totalMatches++;
+            
+            // Only keep first 3 matches for preview
+            if (matches.length < 3) {
+                const start = Math.max(0, index - 40);
+                const end = Math.min(bodyText.length, index + queryLower.length + 40);
+                const context = bodyText.substring(start, end).trim();
+                
+                matches.push({
+                    context: context,
+                    matchIndex: index
+                });
+            }
+            
+            index += queryLower.length;
+        }
+        
+        this.log('✅ GoFaster: Found', totalMatches, 'matches on current page');
+        
+        return {
+            tab: { 
+                title: document.title, 
+                url: window.location.href,
+                active: true,
+                id: 'current'
+            },
+            matches: matches,
+            totalMatches: totalMatches
+        };
     }
     
     filterTabs() {
@@ -673,26 +964,67 @@ class GoFasterCommandPalette {
     }
     
     renderResults() {
-        if (this.isLoading) {
-            this.results.innerHTML = '<div class="no-results">Loading...</div>';
-            return;
-        }
-        
         // Handle content search results
-        if (this.searchMode === 'content') {
+        if (this.paletteMode === 'content') {
             this.renderContentResults();
             return;
         }
         
         // Handle tab search results
         if (this.tabs.length === 0) {
-            this.results.innerHTML = '<div class="no-results">No tabs available</div>';
+            const message = `
+                <div class="no-results">
+                    <div class="no-results-title">No tabs available</div>
+                    <div class="no-results-subtitle">No browser tabs found</div>
+                    <div class="no-results-tips">
+                        <ul>
+                            <li>Open some tabs to get started</li>
+                            <li>Refresh this page if tabs aren't loading</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+            this.results.innerHTML = message;
             return;
         }
         
         if (this.filteredTabs.length === 0) {
-            const message = this.searchQuery ? 'No tabs found' : 'No tabs to display';
-            this.results.innerHTML = `<div class="no-results">${message}</div>`;
+            const isSearching = this.searchQuery && this.searchQuery.trim().length > 0;
+            let message;
+            
+            if (isSearching) {
+                message = `
+                    <div class="no-results">
+                        <div class="no-results-title">No tabs found</div>
+                        <div class="no-results-subtitle">No tabs match "${this.searchQuery}"</div>
+                        <div class="no-results-tips">
+                            <ul>
+                                <li>Try different keywords</li>
+                                <li>Check tab titles and URLs</li>
+                                <li>Use partial matches (e.g., "git" for "github.com")</li>
+                                <li>Press Ctrl+F for content search</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            } else {
+                message = `
+                    <div class="no-results">
+                        <div class="no-results-title">Search your tabs</div>
+                        <div class="no-results-subtitle">Start typing to search by title and domain</div>
+                        <div class="no-results-tips">
+                            <ul>
+                                <li>Search by tab title or website name</li>
+                                <li>Use ↑↓ to navigate, Enter to switch</li>
+                                <li>Press Ctrl+F for content search</li>
+                                <li>Press Esc to close</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            this.results.innerHTML = message;
             return;
         }
         
@@ -700,13 +1032,49 @@ class GoFasterCommandPalette {
     }
     
     renderContentResults() {
-        this.log('🎨 GoFaster: Rendering', this.contentResults.length, 'content results');
+        this.log('🎨 GoFaster: Rendering content search results');
         
         // Clear existing results
         this.results.innerHTML = '';
         
+        const trimmedQuery = this.searchQuery.trim();
+        
+        // Show instructions if no query
+        if (!trimmedQuery) {
+            const message = `
+                <div class="no-results">
+                    <div class="no-results-title">Search page content</div>
+                    <div class="no-results-subtitle">Find text inside your open tabs</div>
+                    <div class="no-results-tips">
+                        <ul>
+                            <li>Type any word or phrase to search</li>
+                            <li>Searches across all open tabs</li>
+                            <li>Shows content previews with matches</li>
+                            <li>Press Ctrl+P for tab search</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+            this.results.innerHTML = message;
+            return;
+        }
+        
         if (this.contentResults.length === 0) {
-            this.results.innerHTML = '<div class="no-results">No content matches found</div>';
+            const message = `
+                <div class="no-results">
+                    <div class="no-results-title">No content matches found</div>
+                    <div class="no-results-subtitle">No pages contain "${trimmedQuery}"</div>
+                    <div class="no-results-tips">
+                        <ul>
+                            <li>Try different keywords or phrases</li>
+                            <li>Check spelling and try partial matches</li>
+                            <li>Content search looks inside page text</li>
+                            <li>Press Ctrl+P for tab title search</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+            this.results.innerHTML = message;
             return;
         }
         
@@ -893,7 +1261,7 @@ class GoFasterCommandPalette {
     }
     
     selectNext() {
-        const maxIndex = this.searchMode === 'content' ? 
+        const maxIndex = this.paletteMode === 'content' ? 
             this.contentResults.length - 1 : 
             this.filteredTabs.length - 1;
         this.selectedIndex = Math.min(this.selectedIndex + 1, maxIndex);
@@ -909,39 +1277,85 @@ class GoFasterCommandPalette {
         let selectedItem;
         let tabId;
         
-        if (this.searchMode === 'content' && this.contentResults.length > 0) {
+        if (this.paletteMode === 'content' && this.contentResults.length > 0) {
             if (this.selectedIndex >= this.contentResults.length) return false;
             selectedItem = this.contentResults[this.selectedIndex];
             tabId = selectedItem.tab.id;
+            
+            // Handle content search result with highlighting
+            return await this.executeContentResult(selectedItem);
         } else {
             if (this.filteredTabs.length === 0) return false;
             selectedItem = this.filteredTabs[this.selectedIndex];
             tabId = selectedItem.id;
-        }
-        
-        if (selectedItem) {
-            const title = this.searchMode === 'content' ? selectedItem.tab.title : selectedItem.title;
-            this.log('🎯 GoFaster: Switching to tab:', title);
             
-            try {
-                await this.sendMessage({
-                    action: 'switchToTab',
-                    tabId: tabId
-                });
+            // Handle regular tab switch
+            return await this.executeTabResult(selectedItem);
+        }
+    }
+    
+    async executeContentResult(selectedItem) {
+        const query = this.searchQuery.trim();
+        this.log('🎯 GoFaster: Executing content result for:', selectedItem.tab.title, 'query:', query);
+        
+        try {
+            // If this is the current tab, highlight and scroll to the result
+            if (selectedItem.tab.active || selectedItem.tab.id === 'current') {
+                this.log('📍 GoFaster: Highlighting result on current page');
+                this.highlightAndScrollToResult(query);
                 this.close();
                 return true;
-            } catch (error) {
-                this.error('❌ GoFaster: Error switching to tab:', error);
+            } else {
+                // Switch to the tab first, then highlight
+                this.log('🔄 GoFaster: Switching to tab and highlighting result');
+                await this.sendMessage({
+                    action: 'switchToTab',
+                    tabId: selectedItem.tab.id
+                });
                 
-                // Show user-friendly error for context invalidation
-                if (error.message.includes('Extension context invalidated')) {
-                    this.results.innerHTML = '<div class="no-results">Extension was reloaded. Please refresh this page.</div>';
-                }
+                // Wait a moment for tab switch, then highlight
+                setTimeout(() => {
+                    this.highlightResultInTab(selectedItem.tab.id, query);
+                }, 500);
                 
-                return false;
+                this.close();
+                return true;
             }
+        } catch (error) {
+            this.error('❌ GoFaster: Error executing content result:', error);
+            
+            // Show user-friendly error for context invalidation
+            if (error.message.includes('Extension context invalidated')) {
+                this.results.innerHTML = '<div class="no-results">Extension was reloaded. Please refresh this page.</div>';
+            }
+            
+            return false;
         }
-        return false;
+    }
+    
+    async executeTabResult(selectedItem) {
+        const title = selectedItem.title;
+        const tabId = selectedItem.id;
+        
+        this.log('🎯 GoFaster: Switching to tab:', title);
+        
+        try {
+            await this.sendMessage({
+                action: 'switchToTab',
+                tabId: tabId
+            });
+            this.close();
+            return true;
+        } catch (error) {
+            this.error('❌ GoFaster: Error switching to tab:', error);
+            
+            // Show user-friendly error for context invalidation
+            if (error.message.includes('Extension context invalidated')) {
+                this.results.innerHTML = '<div class="no-results">Extension was reloaded. Please refresh this page.</div>';
+            }
+            
+            return false;
+        }
     }
     
     async togglePinSelected() {
@@ -1145,13 +1559,22 @@ class GoFasterCommandPalette {
         
         let shortcuts = [
             '<span><kbd>↑↓</kbd> Navigate</span>',
-            '<span><kbd>Enter</kbd> Select</span>',
-            '<span><kbd>Ctrl+Shift+P</kbd> Pin</span>',
-            '<span><kbd>Ctrl+M</kbd> Mute</span>',
-            '<span><kbd>Del</kbd> Close</span>',
-            `<span><kbd>Ctrl+G</kbd> ${groupingText}</span>`,
-            '<span><kbd>Esc</kbd> Exit</span>'
+            '<span><kbd>Enter</kbd> Select</span>'
         ];
+        
+        if (this.paletteMode === 'content') {
+            // Content search mode shortcuts
+            shortcuts.push('<span><kbd>Ctrl+P</kbd> Tab Search</span>');
+            shortcuts.push('<span><kbd>Esc</kbd> Close</span>');
+        } else {
+            // Tab search mode shortcuts
+            shortcuts.push('<span><kbd>Ctrl+Shift+P</kbd> Pin</span>');
+            shortcuts.push('<span><kbd>Ctrl+M</kbd> Mute</span>');
+            shortcuts.push('<span><kbd>Del</kbd> Close Tab</span>');
+            shortcuts.push(`<span><kbd>Ctrl+G</kbd> ${groupingText}</span>`);
+            shortcuts.push('<span><kbd>Ctrl+F</kbd> Content Search</span>');
+            shortcuts.push('<span><kbd>Esc</kbd> Close</span>');
+        }
         
         this.footer.innerHTML = `
             <div class="shortcuts">
@@ -1201,6 +1624,258 @@ class GoFasterCommandPalette {
     
     escapeRegex(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    
+    switchToTabSearch() {
+        if (this.paletteMode === 'tabs') return;
+        
+        this.log('🎯 GoFaster: Switching to tab search mode');
+        this.paletteMode = 'tabs';
+        this.searchInput.value = '';
+        this.searchQuery = '';
+        this.selectedIndex = 0;
+        
+        this.updatePlaceholder();
+        this.updateFooter();
+        this.updateResults();
+    }
+    
+    switchToContentSearch() {
+        if (this.paletteMode === 'content') return;
+        
+        this.log('🔍 GoFaster: Switching to content search mode');
+        this.paletteMode = 'content';
+        this.searchInput.value = '';
+        this.searchQuery = '';
+        this.selectedIndex = 0;
+        
+        this.updatePlaceholder();
+        this.updateFooter();
+        this.updateResults();
+    }
+    
+    // Highlight and scroll to search result on current page
+    highlightAndScrollToResult(query) {
+        this.log('🎨 GoFaster: Highlighting search result for:', query);
+        
+        // Remove any existing highlights
+        this.removeExistingHighlights();
+        
+        const queryLower = query.toLowerCase();
+        const walker = document.createTreeWalker(
+            document.body,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: (node) => {
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    
+                    // Skip script, style, and other non-visible elements
+                    const tagName = parent.tagName.toLowerCase();
+                    if (['script', 'style', 'noscript', 'head'].includes(tagName)) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    
+                    // Skip if parent is hidden
+                    const style = window.getComputedStyle(parent);
+                    if (style.display === 'none' || style.visibility === 'hidden') {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    
+                    const text = node.textContent.toLowerCase();
+                    return text.includes(queryLower) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                }
+            }
+        );
+        
+        const textNodes = [];
+        let node;
+        while (node = walker.nextNode()) {
+            textNodes.push(node);
+        }
+        
+        if (textNodes.length === 0) {
+            this.log('⚠️ GoFaster: No text nodes found to highlight');
+            return;
+        }
+        
+        let firstHighlight = null;
+        let highlightCount = 0;
+        
+        textNodes.forEach(textNode => {
+            const text = textNode.textContent;
+            const textLower = text.toLowerCase();
+            
+            if (textLower.includes(queryLower)) {
+                const parent = textNode.parentNode;
+                const newHTML = text.replace(
+                    new RegExp(`(${this.escapeRegex(query)})`, 'gi'),
+                    '<mark class="gofaster-highlight" style="background: #ffeb3b; padding: 2px 4px; border-radius: 2px; box-shadow: 0 0 0 1px #f57f17;">$1</mark>'
+                );
+                
+                // Create a temporary container to parse the HTML
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = newHTML;
+                
+                // Replace the text node with the highlighted content
+                const fragment = document.createDocumentFragment();
+                while (tempDiv.firstChild) {
+                    const child = tempDiv.firstChild;
+                    fragment.appendChild(child);
+                    
+                    // Remember the first highlight for scrolling
+                    if (!firstHighlight && child.classList && child.classList.contains('gofaster-highlight')) {
+                        firstHighlight = child;
+                    }
+                }
+                
+                parent.replaceChild(fragment, textNode);
+                highlightCount++;
+            }
+        });
+        
+        this.log('✅ GoFaster: Highlighted', highlightCount, 'text nodes');
+        
+        // Scroll to the first highlight
+        if (firstHighlight) {
+            this.log('📍 GoFaster: Scrolling to first highlight');
+            firstHighlight.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center',
+                inline: 'nearest'
+            });
+            
+            // Add a temporary pulse effect
+            firstHighlight.style.animation = 'gofaster-pulse 2s ease-in-out';
+            
+            // Remove highlights after 10 seconds
+            setTimeout(() => {
+                this.removeExistingHighlights();
+            }, 10000);
+        }
+    }
+    
+    // Remove existing highlights
+    removeExistingHighlights() {
+        const highlights = document.querySelectorAll('.gofaster-highlight');
+        highlights.forEach(highlight => {
+            const parent = highlight.parentNode;
+            parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
+            parent.normalize(); // Merge adjacent text nodes
+        });
+        
+        if (highlights.length > 0) {
+            this.log('🧹 GoFaster: Removed', highlights.length, 'existing highlights');
+        }
+    }
+    
+    // Highlight result in another tab
+    async highlightResultInTab(tabId, query) {
+        try {
+            this.log('🎨 GoFaster: Highlighting result in tab:', tabId);
+            
+            await chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                func: (searchQuery) => {
+                    // This runs in the target tab's context
+                    console.log('GoFaster: Highlighting search result for:', searchQuery);
+                    
+                    // Remove any existing highlights
+                    const existingHighlights = document.querySelectorAll('.gofaster-highlight');
+                    existingHighlights.forEach(highlight => {
+                        const parent = highlight.parentNode;
+                        parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
+                        parent.normalize();
+                    });
+                    
+                    const queryLower = searchQuery.toLowerCase();
+                    const walker = document.createTreeWalker(
+                        document.body,
+                        NodeFilter.SHOW_TEXT,
+                        {
+                            acceptNode: (node) => {
+                                const parent = node.parentElement;
+                                if (!parent) return NodeFilter.FILTER_REJECT;
+                                
+                                const tagName = parent.tagName.toLowerCase();
+                                if (['script', 'style', 'noscript', 'head'].includes(tagName)) {
+                                    return NodeFilter.FILTER_REJECT;
+                                }
+                                
+                                const style = window.getComputedStyle(parent);
+                                if (style.display === 'none' || style.visibility === 'hidden') {
+                                    return NodeFilter.FILTER_REJECT;
+                                }
+                                
+                                const text = node.textContent.toLowerCase();
+                                return text.includes(queryLower) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                            }
+                        }
+                    );
+                    
+                    const textNodes = [];
+                    let node;
+                    while (node = walker.nextNode()) {
+                        textNodes.push(node);
+                    }
+                    
+                    let firstHighlight = null;
+                    
+                    textNodes.forEach(textNode => {
+                        const text = textNode.textContent;
+                        const textLower = text.toLowerCase();
+                        
+                        if (textLower.includes(queryLower)) {
+                            const parent = textNode.parentNode;
+                            const escapeRegex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const newHTML = text.replace(
+                                new RegExp(`(${escapeRegex(searchQuery)})`, 'gi'),
+                                '<mark class="gofaster-highlight" style="background: #ffeb3b; padding: 2px 4px; border-radius: 2px; box-shadow: 0 0 0 1px #f57f17; animation: gofaster-pulse 2s ease-in-out;">$1</mark>'
+                            );
+                            
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = newHTML;
+                            
+                            const fragment = document.createDocumentFragment();
+                            while (tempDiv.firstChild) {
+                                const child = tempDiv.firstChild;
+                                fragment.appendChild(child);
+                                
+                                if (!firstHighlight && child.classList && child.classList.contains('gofaster-highlight')) {
+                                    firstHighlight = child;
+                                }
+                            }
+                            
+                            parent.replaceChild(fragment, textNode);
+                        }
+                    });
+                    
+                    // Scroll to first highlight
+                    if (firstHighlight) {
+                        firstHighlight.scrollIntoView({ 
+                            behavior: 'smooth', 
+                            block: 'center',
+                            inline: 'nearest'
+                        });
+                        
+                        // Remove highlights after 10 seconds
+                        setTimeout(() => {
+                            const highlights = document.querySelectorAll('.gofaster-highlight');
+                            highlights.forEach(highlight => {
+                                const parent = highlight.parentNode;
+                                parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
+                                parent.normalize();
+                            });
+                        }, 10000);
+                    }
+                },
+                args: [query]
+            });
+            
+            this.log('✅ GoFaster: Highlight script injected successfully');
+        } catch (error) {
+            this.error('❌ GoFaster: Failed to highlight in tab:', error);
+        }
     }
 }
 

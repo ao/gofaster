@@ -69,8 +69,12 @@ chrome.commands.onCommand.addListener(async (command) => {
     
     switch (command) {
         case 'open-command-palette':
-            log('🎯 GoFaster: Opening command palette via keyboard shortcut');
-            await openCommandPalette();
+            log('🎯 GoFaster: Opening tab search palette via keyboard shortcut');
+            await openCommandPalette('tabs');
+            break;
+        case 'open-content-search':
+            log('🔍 GoFaster: Opening content search palette via keyboard shortcut');
+            await openCommandPalette('content');
             break;
         case 'quick-switch':
             log('🔄 GoFaster: Quick switch triggered');
@@ -81,8 +85,8 @@ chrome.commands.onCommand.addListener(async (command) => {
     }
 });
 
-async function openCommandPalette() {
-    log('🚪 GoFaster: Opening command palette');
+async function openCommandPalette(mode = 'tabs') {
+    log('🚪 GoFaster: Opening command palette in mode:', mode);
     
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -107,7 +111,8 @@ async function openCommandPalette() {
         // First try to send message to existing content script
         try {
             await chrome.tabs.sendMessage(tab.id, { 
-                action: 'openCommandPalette' 
+                action: 'openCommandPalette',
+                mode: mode
             });
             log('✅ GoFaster: Message sent successfully to existing content script');
         } catch (error) {
@@ -132,7 +137,8 @@ async function openCommandPalette() {
                 setTimeout(async () => {
                     try {
                         await chrome.tabs.sendMessage(tab.id, { 
-                            action: 'openCommandPalette' 
+                            action: 'openCommandPalette',
+                            mode: mode
                         });
                         log('✅ GoFaster: Message sent after injection');
                     } catch (retryError) {
@@ -353,6 +359,120 @@ async function broadcastTabUpdate() {
     }
 }
 
+// Search content in a specific tab using script injection
+async function searchTabContentInBackground(tabId, query) {
+    log('🔍 GoFaster: Injecting search script into tab ID:', tabId);
+    
+    try {
+        const results = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: (searchQuery) => {
+                try {
+                    // This runs in the tab's context
+                    console.log('GoFaster: Script injected! Searching for:', searchQuery);
+                    
+                    const query = searchQuery.toLowerCase();
+                    const matches = [];
+                    let totalMatches = 0;
+                    
+                    // Simple text search in the page
+                    const bodyText = document.body ? document.body.textContent : '';
+                    if (!bodyText) {
+                        console.log('GoFaster: No body text found');
+                        return { 
+                            matches: [], 
+                            totalMatches: 0,
+                            error: 'No body text found',
+                            url: window.location.href,
+                            title: document.title
+                        };
+                    }
+                    
+                    console.log('GoFaster: Body text length:', bodyText.length);
+                    
+                    const text = bodyText.toLowerCase();
+                    let index = 0;
+                    
+                    while ((index = text.indexOf(query, index)) !== -1) {
+                        totalMatches++;
+                        
+                        // Only keep first 3 matches for preview
+                        if (matches.length < 3) {
+                            const start = Math.max(0, index - 40);
+                            const end = Math.min(bodyText.length, index + query.length + 40);
+                            const context = bodyText.substring(start, end).trim();
+                            
+                            matches.push({
+                                context: context,
+                                matchIndex: index
+                            });
+                        }
+                        
+                        index += query.length;
+                    }
+                    
+                    console.log('GoFaster: Found', totalMatches, 'matches');
+                    
+                    return {
+                        matches: matches,
+                        totalMatches: totalMatches,
+                        url: window.location.href,
+                        title: document.title,
+                        bodyLength: bodyText.length
+                    };
+                } catch (error) {
+                    console.error('GoFaster: Search error:', error);
+                    return {
+                        matches: [],
+                        totalMatches: 0,
+                        error: error.message,
+                        url: window.location.href,
+                        title: document.title
+                    };
+                }
+            },
+            args: [query]
+        });
+        
+        if (results && results[0] && results[0].result) {
+            const result = results[0].result;
+            
+            if (result.error) {
+                log('⚠️ GoFaster: Script execution error:', result.error);
+                return { success: false, error: result.error };
+            }
+            
+            log('✅ GoFaster: Script executed successfully, found', result.totalMatches, 'matches');
+            
+            return {
+                success: true,
+                matches: result.matches,
+                totalMatches: result.totalMatches,
+                url: result.url,
+                title: result.title
+            };
+        } else {
+            log('⚠️ GoFaster: No result returned from script injection');
+            return { success: false, error: 'No result returned' };
+        }
+        
+    } catch (error) {
+        log('⚠️ GoFaster: Script injection failed:', error.message);
+        
+        // Provide more specific error messages
+        let errorMessage = error.message;
+        if (error.message.includes('Cannot access')) {
+            errorMessage = 'Cannot access tab - may be protected or system page';
+        } else if (error.message.includes('No tab with id')) {
+            errorMessage = 'Tab no longer exists';
+        } else if (error.message.includes('The tab was closed')) {
+            errorMessage = 'Tab was closed during search';
+        }
+        
+        return { success: false, error: errorMessage };
+    }
+}
+
 // Message handling for communication with content script and popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     log('📨 GoFaster: Background received message:', request.action, 'from tab:', sender.tab?.id);
@@ -376,6 +496,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 
                 log('✅ GoFaster: Sending', sortedTabs.length, 'tabs to content script');
                 sendResponse({ tabs: sortedTabs });
+            });
+            return true;
+            
+        case 'getCurrentTab':
+            log('🎯 GoFaster: Getting current tab');
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (chrome.runtime.lastError) {
+                    error('❌ GoFaster: Error getting current tab:', chrome.runtime.lastError);
+                    sendResponse({ tab: null, error: chrome.runtime.lastError.message });
+                    return;
+                }
+                
+                const currentTab = tabs[0];
+                log('✅ GoFaster: Current tab:', currentTab?.title);
+                sendResponse({ tab: currentTab });
+            });
+            return true;
+            
+        case 'searchTabContent':
+            log('🔍 GoFaster: Searching content in tab:', request.tabId);
+            searchTabContentInBackground(request.tabId, request.query).then(result => {
+                sendResponse(result);
+            }).catch(error => {
+                error('❌ GoFaster: Tab content search error:', error);
+                sendResponse({ success: false, error: error.message });
             });
             return true;
             
@@ -433,8 +578,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             return true;
             
         case 'searchContent':
-            log('🔍 GoFaster: Searching content across tabs for:', request.query);
-            searchContentAcrossTabs(request.query).then(results => {
+            log('🔍 GoFaster: Searching content across tabs for:', `"${request.query}"`);
+            const trimmedQuery = (request.query || '').trim();
+            
+            if (!trimmedQuery || trimmedQuery.length < 2) {
+                log('⚠️ GoFaster: Query too short for content search');
+                sendResponse({ success: true, results: [] });
+                return true;
+            }
+            
+            searchContentAcrossTabs(trimmedQuery).then(results => {
+                log('✅ GoFaster: Content search completed, found', results.length, 'results');
                 sendResponse({ success: true, results: results });
             }).catch(error => {
                 error('❌ GoFaster: Content search error:', error);

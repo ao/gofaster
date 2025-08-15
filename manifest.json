@@ -49,7 +49,14 @@
         "default": "Ctrl+P",
         "mac": "Command+P"
       },
-      "description": "Open GoFaster Command Palette"
+      "description": "Open GoFaster Tab Search (Ctrl+P)"
+    },
+    "open-content-search": {
+      "suggested_key": {
+        "default": "Ctrl+F",
+        "mac": "Command+F"
+      },
+      "description": "Open GoFaster Content Search (Ctrl+F)"
     },
     "quick-switch": {
       "suggested_key": {
