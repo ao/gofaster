@@ -1,10 +1,51 @@
 // GoFaster Background Service Worker - Fixed Version
 
-console.log('🚀 GoFaster: Background script starting');
+// Debug mode system
+let debugMode = false;
+
+// Initialize debug mode from storage
+chrome.storage.sync.get(['debugMode']).then(result => {
+    debugMode = result.debugMode === true;
+    if (debugMode) {
+        log('🐛 GoFaster: Debug mode enabled in background script');
+    }
+});
+
+// Debug-aware logging functions
+function log(...args) {
+    if (debugMode) {
+        console.log(...args);
+    }
+}
+
+function warn(...args) {
+    if (debugMode) {
+        console.warn(...args);
+    }
+}
+
+function error(...args) {
+    // Always show errors, but prefix with GoFaster
+    console.error('GoFaster:', ...args);
+}
+
+// Listen for debug mode changes
+chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'sync' && changes.debugMode) {
+        debugMode = changes.debugMode.newValue === true;
+        if (debugMode) {
+            log('🐛 GoFaster: Debug mode enabled');
+        } else {
+            log('GoFaster: Debug mode disabled');
+        }
+    }
+});
+
+log('🚀 GoFaster: Background script starting');
 
 // Initialize extension
 chrome.runtime.onInstalled.addListener((details) => {
-    console.log('🔧 GoFaster: Extension installed/updated');
+    log('🔧 GoFaster: Extension installed/updated');
     
     if (details.reason === 'install') {
         // Set default settings on first install
@@ -15,7 +56,7 @@ chrome.runtime.onInstalled.addListener((details) => {
             theme: 'auto'
         });
         
-        console.log('✅ GoFaster: Default settings saved');
+        log('✅ GoFaster: Default settings saved');
     }
     
     // Create context menus after installation
@@ -24,33 +65,33 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Handle keyboard shortcuts
 chrome.commands.onCommand.addListener(async (command) => {
-    console.log('⌨️ GoFaster: Command triggered:', command);
+    log('⌨️ GoFaster: Command triggered:', command);
     
     switch (command) {
         case 'open-command-palette':
-            console.log('🎯 GoFaster: Opening command palette via keyboard shortcut');
+            log('🎯 GoFaster: Opening command palette via keyboard shortcut');
             await openCommandPalette();
             break;
         case 'quick-switch':
-            console.log('🔄 GoFaster: Quick switch triggered');
+            log('🔄 GoFaster: Quick switch triggered');
             await quickSwitch();
             break;
         default:
-            console.log('⚠️ GoFaster: Unknown command:', command);
+            log('⚠️ GoFaster: Unknown command:', command);
     }
 });
 
 async function openCommandPalette() {
-    console.log('🚪 GoFaster: Opening command palette');
+    log('🚪 GoFaster: Opening command palette');
     
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab) {
-            console.error('❌ GoFaster: No active tab found');
+            error('❌ GoFaster: No active tab found');
             return;
         }
         
-        console.log('📤 GoFaster: Sending message to tab:', tab.id, tab.url);
+        log('📤 GoFaster: Sending message to tab:', tab.id, tab.url);
         
         // Check if we can inject into this page
         if (tab.url.startsWith('chrome://') || 
@@ -58,7 +99,7 @@ async function openCommandPalette() {
             tab.url.startsWith('moz-extension://') ||
             tab.url.startsWith('edge://') ||
             tab.url.startsWith('about:')) {
-            console.log('⚠️ GoFaster: Cannot inject into system page, opening popup instead');
+            log('⚠️ GoFaster: Cannot inject into system page, opening popup instead');
             chrome.action.openPopup();
             return;
         }
@@ -68,10 +109,10 @@ async function openCommandPalette() {
             await chrome.tabs.sendMessage(tab.id, { 
                 action: 'openCommandPalette' 
             });
-            console.log('✅ GoFaster: Message sent successfully to existing content script');
+            log('✅ GoFaster: Message sent successfully to existing content script');
         } catch (error) {
-            console.log('⚠️ GoFaster: Content script not ready, error:', error.message);
-            console.log('🔧 GoFaster: Attempting to inject content script...');
+            log('⚠️ GoFaster: Content script not ready, error:', error.message);
+            log('🔧 GoFaster: Attempting to inject content script...');
             
             // If content script isn't loaded, inject it
             try {
@@ -85,7 +126,7 @@ async function openCommandPalette() {
                     files: ['content/content.css']
                 });
                 
-                console.log('✅ GoFaster: Content script injected successfully');
+                log('✅ GoFaster: Content script injected successfully');
                 
                 // Wait for script to initialize, then try again
                 setTimeout(async () => {
@@ -93,29 +134,29 @@ async function openCommandPalette() {
                         await chrome.tabs.sendMessage(tab.id, { 
                             action: 'openCommandPalette' 
                         });
-                        console.log('✅ GoFaster: Message sent after injection');
+                        log('✅ GoFaster: Message sent after injection');
                     } catch (retryError) {
-                        console.error('❌ GoFaster: Failed to open command palette after injection:', retryError);
-                        console.log('🔄 GoFaster: Falling back to popup');
+                        error('❌ GoFaster: Failed to open command palette after injection:', retryError);
+                        log('🔄 GoFaster: Falling back to popup');
                         chrome.action.openPopup();
                     }
                 }, 300);
                 
             } catch (injectionError) {
-                console.error('❌ GoFaster: Failed to inject content script:', injectionError);
-                console.log('🔄 GoFaster: Falling back to popup');
+                error('❌ GoFaster: Failed to inject content script:', injectionError);
+                log('🔄 GoFaster: Falling back to popup');
                 chrome.action.openPopup();
             }
         }
     } catch (error) {
-        console.error('❌ GoFaster: Error opening command palette:', error);
-        console.log('🔄 GoFaster: Falling back to popup');
+        error('❌ GoFaster: Error opening command palette:', error);
+        log('🔄 GoFaster: Falling back to popup');
         chrome.action.openPopup();
     }
 }
 
 async function quickSwitch() {
-    console.log('🔄 GoFaster: Quick switching tabs');
+    log('🔄 GoFaster: Quick switching tabs');
     
     try {
         const tabs = await chrome.tabs.query({});
@@ -127,12 +168,12 @@ async function quickSwitch() {
         if (recentTabs.length > 0) {
             await chrome.tabs.update(recentTabs[0].id, { active: true });
             await chrome.windows.update(recentTabs[0].windowId, { focused: true });
-            console.log('✅ GoFaster: Switched to tab:', recentTabs[0].title);
+            log('✅ GoFaster: Switched to tab:', recentTabs[0].title);
         } else {
-            console.log('⚠️ GoFaster: No recent tabs to switch to');
+            log('⚠️ GoFaster: No recent tabs to switch to');
         }
     } catch (error) {
-        console.error('❌ GoFaster: Error in quick switch:', error);
+        error('❌ GoFaster: Error in quick switch:', error);
     }
 }
 
@@ -147,6 +188,149 @@ chrome.tabs.onCreated.addListener(broadcastTabUpdate);
 chrome.tabs.onRemoved.addListener(broadcastTabUpdate);
 chrome.tabs.onMoved.addListener(broadcastTabUpdate);
 chrome.tabs.onActivated.addListener(broadcastTabUpdate);
+
+async function searchContentAcrossTabs(query) {
+    if (!query || query.length < 2) {
+        return [];
+    }
+    
+    log('🔍 GoFaster: Starting content search for:', query);
+    
+    try {
+        const tabs = await chrome.tabs.query({});
+        log('📋 GoFaster: Found', tabs.length, 'tabs to search');
+        
+        // Separate current tab from others for priority
+        const currentTab = tabs.find(tab => tab.active);
+        const otherTabs = tabs.filter(tab => !tab.active);
+        
+        // Prioritize current tab, then other tabs (limit total to prevent overwhelming)
+        const tabsToSearch = currentTab ? [currentTab, ...otherTabs.slice(0, 19)] : tabs.slice(0, 20);
+        
+        log('🎯 GoFaster: Searching', tabsToSearch.length, 'tabs (current tab first)');
+        
+        const searchResults = [];
+        
+        // Search tabs sequentially to maintain priority order
+        for (const tab of tabsToSearch) {
+            try {
+                // Skip system pages that can't be scripted
+                if (tab.url.startsWith('chrome://') || 
+                    tab.url.startsWith('chrome-extension://') || 
+                    tab.url.startsWith('moz-extension://') ||
+                    tab.url.startsWith('edge://') ||
+                    tab.url.startsWith('about:')) {
+                    log('⏭️ GoFaster: Skipping system page:', tab.url);
+                    continue;
+                }
+                
+                log('🔍 GoFaster: Searching tab:', tab.title, '(' + tab.url + ')');
+                
+                // Inject and execute content search script
+                const results = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: function(searchQuery) {
+                        // This function runs in the context of the tab
+                        if (!searchQuery || searchQuery.length < 2) {
+                            return { matches: [], totalMatches: 0 };
+                        }
+                        
+                        const query = searchQuery.toLowerCase();
+                        const matches = [];
+                        let totalMatches = 0;
+                        
+                        // Get all text content from the page
+                        const walker = document.createTreeWalker(
+                            document.body || document.documentElement,
+                            NodeFilter.SHOW_TEXT,
+                            {
+                                acceptNode: function(node) {
+                                    const parent = node.parentElement;
+                                    if (!parent) return NodeFilter.FILTER_REJECT;
+                                    
+                                    const tagName = parent.tagName.toLowerCase();
+                                    if (tagName === 'script' || tagName === 'style' || tagName === 'noscript') {
+                                        return NodeFilter.FILTER_REJECT;
+                                    }
+                                    
+                                    const text = node.textContent.trim();
+                                    if (!text) return NodeFilter.FILTER_REJECT;
+                                    
+                                    return NodeFilter.FILTER_ACCEPT;
+                                }
+                            }
+                        );
+                        
+                        const textNodes = [];
+                        let node;
+                        while (node = walker.nextNode()) {
+                            textNodes.push(node);
+                        }
+                        
+                        // Search through text nodes
+                        textNodes.forEach(textNode => {
+                            const text = textNode.textContent.toLowerCase();
+                            const originalText = textNode.textContent;
+                            
+                            let index = 0;
+                            while ((index = text.indexOf(query, index)) !== -1) {
+                                totalMatches++;
+                                
+                                // Only add first few matches per page
+                                if (matches.length < 3) {
+                                    const start = Math.max(0, index - 40);
+                                    const end = Math.min(originalText.length, index + query.length + 40);
+                                    const context = originalText.substring(start, end).trim();
+                                    
+                                    matches.push({
+                                        context: context,
+                                        matchIndex: index
+                                    });
+                                }
+                                
+                                index += query.length;
+                            }
+                        });
+                        
+                        return {
+                            matches: matches,
+                            totalMatches: totalMatches,
+                            url: window.location.href,
+                            title: document.title
+                        };
+                    },
+                    args: [query]
+                });
+                
+                if (results && results[0] && results[0].result) {
+                    const result = results[0].result;
+                    if (result.totalMatches > 0) {
+                        const searchResult = {
+                            tab: tab,
+                            ...result
+                        };
+                        searchResults.push(searchResult);
+                        log('✅ GoFaster: Found', result.totalMatches, 'matches in', tab.title);
+                    } else {
+                        log('⚪ GoFaster: No matches in', tab.title);
+                    }
+                } else {
+                    log('⚠️ GoFaster: No result returned from', tab.title);
+                }
+                
+            } catch (error) {
+                log('⚠️ GoFaster: Could not search tab', tab.id, '(' + tab.title + '):', error.message);
+            }
+        }
+        
+        log('✅ GoFaster: Content search completed, found', searchResults.length, 'tabs with matches');
+        return searchResults;
+        
+    } catch (error) {
+        error('❌ GoFaster: Content search failed:', error);
+        throw error;
+    }
+}
 
 async function broadcastTabUpdate() {
     try {
@@ -165,20 +349,20 @@ async function broadcastTabUpdate() {
             }
         }
     } catch (error) {
-        console.error('❌ GoFaster: Error broadcasting tab update:', error);
+        error('❌ GoFaster: Error broadcasting tab update:', error);
     }
 }
 
 // Message handling for communication with content script and popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('📨 GoFaster: Background received message:', request.action, 'from tab:', sender.tab?.id);
+    log('📨 GoFaster: Background received message:', request.action, 'from tab:', sender.tab?.id);
     
     switch (request.action) {
         case 'getTabs':
-            console.log('📋 GoFaster: Getting tabs list');
+            log('📋 GoFaster: Getting tabs list');
             chrome.tabs.query({}, (tabs) => {
                 if (chrome.runtime.lastError) {
-                    console.error('❌ GoFaster: Error querying tabs:', chrome.runtime.lastError);
+                    error('❌ GoFaster: Error querying tabs:', chrome.runtime.lastError);
                     sendResponse({ tabs: [], error: chrome.runtime.lastError.message });
                     return;
                 }
@@ -190,66 +374,76 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     return (b.lastAccessed || 0) - (a.lastAccessed || 0);
                 });
                 
-                console.log('✅ GoFaster: Sending', sortedTabs.length, 'tabs to content script');
+                log('✅ GoFaster: Sending', sortedTabs.length, 'tabs to content script');
                 sendResponse({ tabs: sortedTabs });
             });
             return true;
             
         case 'switchToTab':
-            console.log('🎯 GoFaster: Switching to tab:', request.tabId);
+            log('🎯 GoFaster: Switching to tab:', request.tabId);
             chrome.tabs.update(request.tabId, { active: true }, (tab) => {
                 if (chrome.runtime.lastError) {
-                    console.error('❌ GoFaster: Error switching to tab:', chrome.runtime.lastError);
+                    error('❌ GoFaster: Error switching to tab:', chrome.runtime.lastError);
                     sendResponse({ success: false, error: chrome.runtime.lastError.message });
                 } else {
                     chrome.windows.update(tab.windowId, { focused: true });
-                    console.log('✅ GoFaster: Switched to tab successfully');
+                    log('✅ GoFaster: Switched to tab successfully');
                     sendResponse({ success: true });
                 }
             });
             return true;
             
         case 'pinTab':
-            console.log('📌 GoFaster: Pinning/unpinning tab:', request.tabId);
+            log('📌 GoFaster: Pinning/unpinning tab:', request.tabId);
             chrome.tabs.update(request.tabId, { pinned: request.pinned }, () => {
                 if (chrome.runtime.lastError) {
-                    console.error('❌ GoFaster: Error pinning tab:', chrome.runtime.lastError);
+                    error('❌ GoFaster: Error pinning tab:', chrome.runtime.lastError);
                     sendResponse({ success: false, error: chrome.runtime.lastError.message });
                 } else {
-                    console.log('✅ GoFaster: Tab pin status updated');
+                    log('✅ GoFaster: Tab pin status updated');
                     sendResponse({ success: true });
                 }
             });
             return true;
             
         case 'muteTab':
-            console.log('🔇 GoFaster: Muting/unmuting tab:', request.tabId);
+            log('🔇 GoFaster: Muting/unmuting tab:', request.tabId);
             chrome.tabs.update(request.tabId, { muted: request.muted }, () => {
                 if (chrome.runtime.lastError) {
-                    console.error('❌ GoFaster: Error muting tab:', chrome.runtime.lastError);
+                    error('❌ GoFaster: Error muting tab:', chrome.runtime.lastError);
                     sendResponse({ success: false, error: chrome.runtime.lastError.message });
                 } else {
-                    console.log('✅ GoFaster: Tab mute status updated');
+                    log('✅ GoFaster: Tab mute status updated');
                     sendResponse({ success: true });
                 }
             });
             return true;
             
         case 'closeTab':
-            console.log('🗑️ GoFaster: Closing tab:', request.tabId);
+            log('🗑️ GoFaster: Closing tab:', request.tabId);
             chrome.tabs.remove(request.tabId, () => {
                 if (chrome.runtime.lastError) {
-                    console.error('❌ GoFaster: Error closing tab:', chrome.runtime.lastError);
+                    error('❌ GoFaster: Error closing tab:', chrome.runtime.lastError);
                     sendResponse({ success: false, error: chrome.runtime.lastError.message });
                 } else {
-                    console.log('✅ GoFaster: Tab closed successfully');
+                    log('✅ GoFaster: Tab closed successfully');
                     sendResponse({ success: true });
                 }
             });
             return true;
             
+        case 'searchContent':
+            log('🔍 GoFaster: Searching content across tabs for:', request.query);
+            searchContentAcrossTabs(request.query).then(results => {
+                sendResponse({ success: true, results: results });
+            }).catch(error => {
+                error('❌ GoFaster: Content search error:', error);
+                sendResponse({ success: false, error: error.message });
+            });
+            return true;
+            
         default:
-            console.log('⚠️ GoFaster: Unknown action:', request.action);
+            log('⚠️ GoFaster: Unknown action:', request.action);
             sendResponse({ error: 'Unknown action: ' + request.action });
     }
 });
@@ -274,13 +468,13 @@ function createContextMenus() {
                     contexts: ['page', 'action']
                 });
                 
-                console.log('✅ GoFaster: Context menus created');
+                log('✅ GoFaster: Context menus created');
             });
             
             // Set up context menu click handler (only once)
             if (chrome.contextMenus.onClicked && !chrome.contextMenus.onClicked.hasListener) {
                 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-                    console.log('🖱️ GoFaster: Context menu clicked:', info.menuItemId);
+                    log('🖱️ GoFaster: Context menu clicked:', info.menuItemId);
                     
                     switch (info.menuItemId) {
                         case 'openGoFaster':
@@ -294,10 +488,10 @@ function createContextMenus() {
                 chrome.contextMenus.onClicked.hasListener = true;
             }
         } else {
-            console.log('⚠️ GoFaster: Context menus API not available');
+            log('⚠️ GoFaster: Context menus API not available');
         }
     } catch (error) {
-        console.error('❌ GoFaster: Error creating context menus:', error);
+        error('❌ GoFaster: Error creating context menus:', error);
     }
 }
 
@@ -306,7 +500,7 @@ function updateBadge() {
     try {
         chrome.tabs.query({}, (tabs) => {
             if (chrome.runtime.lastError) {
-                console.error('❌ GoFaster: Error querying tabs for badge:', chrome.runtime.lastError);
+                error('❌ GoFaster: Error querying tabs for badge:', chrome.runtime.lastError);
                 return;
             }
             
@@ -317,7 +511,7 @@ function updateBadge() {
             chrome.action.setBadgeBackgroundColor({ color: '#1a73e8' });
         });
     } catch (error) {
-        console.error('❌ GoFaster: Error updating badge:', error);
+        error('❌ GoFaster: Error updating badge:', error);
     }
 }
 
@@ -328,4 +522,4 @@ chrome.tabs.onRemoved.addListener(updateBadge);
 // Initialize badge
 updateBadge();
 
-console.log('✅ GoFaster: Background script initialized');
+log('✅ GoFaster: Background script initialized');

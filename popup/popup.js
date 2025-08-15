@@ -4,10 +4,41 @@ class TabManager {
         this.selectedTabs = new Set();
         this.groupByDomain = false;
         this.searchQuery = '';
+        this.debugMode = false;
         
+        this.initializeDebugMode();
         this.initializeElements();
         this.bindEvents();
         this.loadTabs();
+    }
+    
+    async initializeDebugMode() {
+        try {
+            const result = await chrome.storage.sync.get(['debugMode']);
+            this.debugMode = result.debugMode === true;
+            if (this.debugMode) {
+                this.log('🐛 GoFaster: Debug mode enabled in popup');
+            }
+        } catch (error) {
+            // Silently fail
+        }
+    }
+    
+    log(...args) {
+        if (this.debugMode) {
+            this.log(...args);
+        }
+    }
+    
+    warn(...args) {
+        if (this.debugMode) {
+            console.warn(...args);
+        }
+    }
+    
+    error(...args) {
+        // Always show errors
+        this.error('GoFaster:', ...args);
     }
     
     initializeElements() {
@@ -61,7 +92,7 @@ class TabManager {
             // Focus the search input when tabs are loaded
             this.focusSearchInput();
         } catch (error) {
-            console.error('Error loading tabs:', error);
+            this.error('Error loading tabs:', error);
         }
     }
     
@@ -232,7 +263,7 @@ class TabManager {
             await chrome.windows.update(tab.windowId, { focused: true });
             window.close();
         } catch (error) {
-            console.error('Error switching to tab:', error);
+            this.error('Error switching to tab:', error);
         }
     }
     
@@ -242,7 +273,7 @@ class TabManager {
             this.selectedTabs.delete(tabId);
             this.loadTabs();
         } catch (error) {
-            console.error('Error closing tab:', error);
+            this.error('Error closing tab:', error);
         }
     }
     
@@ -254,7 +285,7 @@ class TabManager {
             this.selectedTabs.clear();
             this.loadTabs();
         } catch (error) {
-            console.error('Error closing selected tabs:', error);
+            this.error('Error closing selected tabs:', error);
         }
     }
     
@@ -264,7 +295,7 @@ class TabManager {
             await chrome.tabs.update(tabId, { pinned: !tab.pinned });
             this.loadTabs();
         } catch (error) {
-            console.error('Error toggling pin state:', error);
+            this.error('Error toggling pin state:', error);
         }
     }
     
@@ -274,7 +305,7 @@ class TabManager {
             await chrome.tabs.update(tabId, { muted: !tab.mutedInfo.muted });
             this.loadTabs();
         } catch (error) {
-            console.error('Error muting tab:', error);
+            this.error('Error muting tab:', error);
         }
     }
     

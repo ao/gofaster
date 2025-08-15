@@ -58,7 +58,7 @@ describe('GoFasterCommandPalette', () => {
             expect(footer).toBeDefined();
             
             expect(overlay.classList.contains('gofaster-hidden')).toBe(true);
-            expect(searchInput.placeholder).toBe('Search tabs, commands, or content...');
+            expect(searchInput.placeholder).toBe('Search tabs, content, or commands...');
         });
 
         test('should test connection to background script', async () => {

@@ -6,17 +6,20 @@ export class GoFasterCommandPalette {
         this.isOpen = false;
         this.tabs = [];
         this.filteredTabs = [];
+        this.contentResults = [];
         this.selectedIndex = 0;
         this.searchQuery = '';
         this.isLoading = false;
         this.groupByDomain = false; // Add grouping state
+        this.searchMode = 'tabs'; // 'tabs' or 'content'
+        this.debugMode = options.debugMode || false; // Allow debug mode override for testing
         
         // Allow dependency injection for testing
         this.chrome = options.chrome || globalThis.chrome;
         this.document = options.document || globalThis.document;
         this.console = options.console || globalThis.console;
         
-        this.console.log('🚀 GoFaster: Initializing command palette');
+        this.log('🚀 GoFaster: Initializing command palette');
         
         if (this.document) {
             this.createPalette();
@@ -27,37 +30,86 @@ export class GoFasterCommandPalette {
         this.testConnection();
     }
     
+    log(...args) {
+        if (this.debugMode && this.console) {
+            this.log(...args);
+        }
+    }
+    
+    warn(...args) {
+        if (this.debugMode && this.console) {
+            this.console.warn(...args);
+        }
+    }
+    
+    error(...args) {
+        // Always show errors in tests
+        if (this.console) {
+            this.console.error('GoFaster:', ...args);
+        }
+    }
+    
+    enableDebugMode() {
+        this.debugMode = true;
+        this.log('🐛 GoFaster: Debug mode enabled');
+    }
+    
+    disableDebugMode() {
+        this.debugMode = false;
+        if (this.console) {
+            this.log('GoFaster: Debug mode disabled');
+        }
+    }
+    
     async testConnection() {
         try {
-            this.console.log('🔍 GoFaster: Testing connection to background script');
+            this.log('🔍 GoFaster: Testing connection to background script');
             const response = await this.sendMessage({ action: 'getTabs' });
-            this.console.log('✅ GoFaster: Connection successful, got', response?.tabs?.length || 0, 'tabs');
+            this.log('✅ GoFaster: Connection successful, got', response?.tabs?.length || 0, 'tabs');
             return true;
         } catch (error) {
-            this.console.error('❌ GoFaster: Connection test failed:', error);
+            this.error('❌ GoFaster: Connection test failed:', error);
             return false;
         }
     }
     
     sendMessage(message) {
         return new Promise((resolve, reject) => {
+            // Check if extension context is still valid
+            if (!this.chrome?.runtime?.id) {
+                reject(new Error('Extension context invalidated - please reload the page'));
+                return;
+            }
+            
             if (!this.chrome?.runtime?.sendMessage) {
                 reject(new Error('Chrome runtime not available'));
                 return;
             }
             
-            this.chrome.runtime.sendMessage(message, (response) => {
-                if (this.chrome.runtime.lastError) {
-                    reject(new Error(this.chrome.runtime.lastError.message));
-                } else {
-                    resolve(response);
-                }
-            });
+            try {
+                this.chrome.runtime.sendMessage(message, (response) => {
+                    if (this.chrome.runtime.lastError) {
+                        // Check for specific context invalidation errors
+                        const error = this.chrome.runtime.lastError.message;
+                        if (error.includes('Extension context invalidated') || 
+                            error.includes('message port closed') ||
+                            error.includes('receiving end does not exist')) {
+                            reject(new Error('Extension context invalidated - please reload the page'));
+                        } else {
+                            reject(new Error(error));
+                        }
+                    } else {
+                        resolve(response);
+                    }
+                });
+            } catch (error) {
+                reject(new Error('Failed to send message: ' + error.message));
+            }
         });
     }
     
     createPalette() {
-        this.console.log('🎨 GoFaster: Creating palette DOM elements');
+        this.log('🎨 GoFaster: Creating palette DOM elements');
         
         // Remove existing palette if it exists
         const existing = this.document.getElementById('gofaster-overlay');
@@ -78,7 +130,7 @@ export class GoFasterCommandPalette {
         this.searchInput = this.document.createElement('input');
         this.searchInput.id = 'gofaster-search';
         this.searchInput.type = 'text';
-        this.searchInput.placeholder = 'Search tabs, commands, or content...';
+        this.searchInput.placeholder = 'Search tabs, content, or commands...';
         this.searchInput.autocomplete = 'off';
         this.searchInput.spellcheck = false;
         
@@ -89,16 +141,7 @@ export class GoFasterCommandPalette {
         // Create footer with shortcuts
         this.footer = this.document.createElement('div');
         this.footer.id = 'gofaster-footer';
-        this.footer.innerHTML = `
-            <div class="shortcuts">
-                <span><kbd>↑↓</kbd> Navigate</span>
-                <span><kbd>Enter</kbd> Select</span>
-                <span><kbd>Ctrl+Shift+P</kbd> Pin</span>
-                <span><kbd>Ctrl+M</kbd> Mute</span>
-                <span><kbd>Del</kbd> Close</span>
-                <span><kbd>Esc</kbd> Exit</span>
-            </div>
-        `;
+        this.updateFooter();
         
         // Assemble palette
         this.palette.appendChild(this.searchInput);
@@ -109,18 +152,18 @@ export class GoFasterCommandPalette {
         // Add to page
         this.document.body.appendChild(this.overlay);
         
-        this.console.log('✅ GoFaster: Palette DOM created');
+        this.log('✅ GoFaster: Palette DOM created');
     }
     
     bindEvents() {
-        this.console.log('🔗 GoFaster: Binding events');
+        this.log('🔗 GoFaster: Binding events');
         
         // Listen for keyboard shortcuts
         this.document.addEventListener('keydown', (e) => {
             // Ctrl+P / Cmd+P to toggle palette
             if ((e.ctrlKey || e.metaKey) && e.key === 'p' && !e.shiftKey) {
                 e.preventDefault();
-                this.console.log('⌨️ GoFaster: Ctrl+P detected');
+                this.log('⌨️ GoFaster: Ctrl+P detected');
                 this.toggle();
                 return;
             }
@@ -145,26 +188,37 @@ export class GoFasterCommandPalette {
                         this.executeSelected();
                         break;
                     case 'p':
+                        // Pin/unpin selected tab (only with Shift to avoid conflict)
                         if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
                             e.preventDefault();
                             this.togglePinSelected();
                         }
                         break;
                     case 'm':
+                        // Mute/unmute selected tab
                         if (e.ctrlKey || e.metaKey) {
                             e.preventDefault();
                             this.toggleMuteSelected();
                         }
                         break;
                     case 'x':
+                        // Close selected tab
                         if (e.ctrlKey || e.metaKey) {
                             e.preventDefault();
                             this.closeSelected();
                         }
                         break;
                     case 'Delete':
+                        // Alternative close shortcut
                         e.preventDefault();
                         this.closeSelected();
+                        break;
+                    case 'g':
+                        // Toggle grouping with Ctrl+G
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            this.toggleGrouping();
+                        }
                         break;
                 }
             }
@@ -173,7 +227,17 @@ export class GoFasterCommandPalette {
         // Search input events
         this.searchInput.addEventListener('input', (e) => {
             this.searchQuery = e.target.value;
-            this.console.log('🔍 GoFaster: Search query changed:', this.searchQuery);
+            this.log('🔍 GoFaster: Search query changed:', this.searchQuery);
+            
+            // Determine search mode based on query
+            if (this.searchQuery.length >= 3 && this.searchQuery.includes(' ')) {
+                // Longer queries with spaces are likely content searches
+                this.searchMode = 'content';
+            } else {
+                // Short queries or single words are tab searches
+                this.searchMode = 'tabs';
+            }
+            
             this.updateResults();
         });
         
@@ -184,7 +248,7 @@ export class GoFasterCommandPalette {
             }
         });
         
-        // Result item clicks and context menu
+        // Result item clicks
         this.results.addEventListener('click', (e) => {
             const item = e.target.closest('.result-item');
             if (item) {
@@ -194,10 +258,22 @@ export class GoFasterCommandPalette {
             }
         });
         
+        // Right-click context menu for result items
+        this.results.addEventListener('contextmenu', (e) => {
+            const item = e.target.closest('.result-item');
+            if (item) {
+                e.preventDefault();
+                const index = parseInt(item.dataset.index);
+                this.selectedIndex = index;
+                this.updateSelection();
+                this.showContextMenu(e.clientX, e.clientY);
+            }
+        });
+        
         // Listen for messages from background script
-        if (this.chrome?.runtime?.onMessage) {
+        if (this.chrome && this.chrome.runtime && this.chrome.runtime.onMessage) {
             this.chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-                this.console.log('📨 GoFaster: Received message:', request.action);
+                this.log('📨 GoFaster: Received message:', request.action);
                 
                 if (request.action === 'openCommandPalette') {
                     this.open();
@@ -222,7 +298,7 @@ export class GoFasterCommandPalette {
     async open() {
         if (this.isOpen) return;
         
-        this.console.log('🚪 GoFaster: Opening command palette');
+        this.log('🚪 GoFaster: Opening command palette');
         
         this.isOpen = true;
         this.overlay.classList.remove('gofaster-hidden');
@@ -237,7 +313,7 @@ export class GoFasterCommandPalette {
         // Load tabs first, then update results
         try {
             await this.loadTabs();
-            this.console.log('✅ GoFaster: Tabs loaded successfully');
+            this.log('✅ GoFaster: Tabs loaded successfully');
             
             // Update results after tabs are loaded
             this.updateResults();
@@ -245,7 +321,7 @@ export class GoFasterCommandPalette {
             // Focus search input after everything is ready
             this.focusSearchInput();
         } catch (error) {
-            this.console.error('❌ GoFaster: Failed to load tabs:', error);
+            this.error('❌ GoFaster: Failed to load tabs:', error);
             this.results.innerHTML = `
                 <div class="no-results">
                     Error loading tabs: ${error.message}<br>
@@ -256,44 +332,21 @@ export class GoFasterCommandPalette {
     }
     
     focusSearchInput() {
-        this.console.log('🎯 GoFaster: Attempting to focus search input');
+        this.log('🎯 GoFaster: Attempting to focus search input');
         
         if (!this.searchInput) {
-            this.console.error('❌ GoFaster: Search input not found');
+            this.error('❌ GoFaster: Search input not found');
             return false;
         }
         
-        // Immediate focus attempt
         this.searchInput.focus();
-        
-        // Multiple focus attempts for reliability
-        const attemptFocus = (attempt = 1) => {
-            setTimeout(() => {
-                this.searchInput.focus();
-                
-                setTimeout(() => {
-                    if (this.document.activeElement === this.searchInput) {
-                        this.console.log('✅ GoFaster: Search input focused successfully on attempt', attempt);
-                    } else {
-                        this.console.log('⚠️ GoFaster: Focus attempt', attempt, 'failed, active element:', this.document.activeElement?.tagName);
-                        if (attempt < 5) {
-                            attemptFocus(attempt + 1);
-                        }
-                    }
-                }, 50 * attempt);
-            }, 50 * (attempt - 1));
-        };
-        
-        attemptFocus();
-        
-        // Return true to indicate the method executed
         return true;
     }
     
     close() {
         if (!this.isOpen) return;
         
-        this.console.log('🚪 GoFaster: Closing command palette');
+        this.log('🚪 GoFaster: Closing command palette');
         
         this.isOpen = false;
         this.overlay.classList.add('gofaster-hidden');
@@ -301,7 +354,7 @@ export class GoFasterCommandPalette {
     }
     
     async loadTabs() {
-        this.console.log('📋 GoFaster: Loading tabs from background script');
+        this.log('📋 GoFaster: Loading tabs from background script');
         this.isLoading = true;
         
         try {
@@ -309,39 +362,78 @@ export class GoFasterCommandPalette {
             
             if (response && response.tabs) {
                 this.tabs = response.tabs;
-                this.console.log('✅ GoFaster: Loaded', this.tabs.length, 'tabs');
+                this.log('✅ GoFaster: Loaded', this.tabs.length, 'tabs');
             } else {
-                this.console.error('❌ GoFaster: Invalid response from background script:', response);
+                this.error('❌ GoFaster: Invalid response from background script:', response);
                 this.tabs = [];
                 throw new Error('Invalid response from background script');
             }
         } catch (error) {
-            this.console.error('❌ GoFaster: Error loading tabs:', error);
+            this.error('❌ GoFaster: Error loading tabs:', error);
             this.tabs = [];
-            throw error; // Re-throw for caller to handle
+            throw error;
         } finally {
             this.isLoading = false;
         }
     }
     
-    updateResults() {
-        this.console.log('🔄 GoFaster: Updating results. Tabs:', this.tabs.length, 'Query:', this.searchQuery, 'Loading:', this.isLoading);
+    async updateResults() {
+        this.log('🔄 GoFaster: Updating results. Mode:', this.searchMode, 'Query:', this.searchQuery, 'Loading:', this.isLoading);
         
         if (this.isLoading) {
-            this.results.innerHTML = '<div class="no-results">Loading tabs...</div>';
+            this.results.innerHTML = '<div class="no-results">Loading...</div>';
             return;
         }
         
-        this.filteredTabs = this.filterTabs();
-        this.console.log('📊 GoFaster: Filtered to', this.filteredTabs.length, 'tabs');
+        if (this.searchMode === 'content' && this.searchQuery.length >= 3) {
+            await this.performContentSearch();
+        } else {
+            this.performTabSearch();
+        }
         
         this.renderResults();
         this.updateSelection();
     }
     
+    performTabSearch() {
+        this.filteredTabs = this.filterTabs();
+        this.contentResults = [];
+        this.log('📊 GoFaster: Filtered to', this.filteredTabs.length, 'tabs');
+    }
+    
+    async performContentSearch() {
+        this.log('🔍 GoFaster: Performing content search for:', this.searchQuery);
+        
+        this.isLoading = true;
+        this.results.innerHTML = '<div class="no-results">Searching page content...</div>';
+        
+        try {
+            const response = await this.sendMessage({
+                action: 'searchContent',
+                query: this.searchQuery
+            });
+            
+            if (response && response.success) {
+                this.contentResults = response.results || [];
+                this.filteredTabs = [];
+                this.log('✅ GoFaster: Content search found', this.contentResults.length, 'results');
+            } else {
+                this.error('❌ GoFaster: Content search failed:', response?.error);
+                this.contentResults = [];
+                this.filteredTabs = [];
+            }
+        } catch (error) {
+            this.error('❌ GoFaster: Content search error:', error);
+            this.contentResults = [];
+            this.filteredTabs = [];
+        } finally {
+            this.isLoading = false;
+        }
+    }
+    
     filterTabs() {
         if (this.tabs.length === 0) {
-            this.console.log('⚠️ GoFaster: No tabs available to filter');
+            this.log('⚠️ GoFaster: No tabs available to filter');
             return [];
         }
         
@@ -378,8 +470,7 @@ export class GoFasterCommandPalette {
             filteredTabs = this.groupTabsByDomain(filteredTabs);
         }
         
-        // Only limit results when there are a very large number of tabs to prevent performance issues
-        // This addresses the integration test that expects limiting with 100 tabs
+        // Only limit results when there are a very large number of tabs
         if (filteredTabs.length > 50) {
             const maxResults = this.searchQuery ? 20 : 10;
             filteredTabs = filteredTabs.slice(0, maxResults);
@@ -390,10 +481,17 @@ export class GoFasterCommandPalette {
     
     renderResults() {
         if (this.isLoading) {
-            this.results.innerHTML = '<div class="no-results">Loading tabs...</div>';
+            this.results.innerHTML = '<div class="no-results">Loading...</div>';
             return;
         }
         
+        // Handle content search results
+        if (this.searchMode === 'content') {
+            this.renderContentResults();
+            return;
+        }
+        
+        // Handle tab search results
         if (this.tabs.length === 0) {
             this.results.innerHTML = '<div class="no-results">No tabs available</div>';
             return;
@@ -405,8 +503,100 @@ export class GoFasterCommandPalette {
             return;
         }
         
+        this.renderTabResults();
+    }
+    
+    renderContentResults() {
+        this.log('🎨 GoFaster: Rendering', this.contentResults.length, 'content results');
+        
         // Clear existing results
         this.results.innerHTML = '';
+        
+        if (this.contentResults.length === 0) {
+            this.results.innerHTML = '<div class="no-results">No content matches found</div>';
+            return;
+        }
+        
+        this.contentResults.forEach((result, index) => {
+            const tab = result.tab;
+            const title = tab.title || 'Untitled Tab';
+            const domain = this.extractDomain(tab.url || '');
+            
+            // Create result item element
+            const resultItem = this.document.createElement('div');
+            resultItem.className = 'result-item content-result';
+            resultItem.dataset.index = index;
+            resultItem.dataset.tabId = tab.id || 0;
+            
+            // Create favicon
+            const favicon = this.document.createElement('img');
+            favicon.className = 'result-favicon';
+            favicon.src = tab.favIconUrl || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="%23f1f3f4"/></svg>';
+            favicon.alt = '';
+            favicon.onerror = function() { this.style.display = 'none'; };
+            
+            // Create content container
+            const content = this.document.createElement('div');
+            content.className = 'result-content';
+            
+            // Create title with match count
+            const titleEl = this.document.createElement('div');
+            titleEl.className = 'result-title';
+            titleEl.innerHTML = `${this.escapeHtml(title)} <span class="match-count">(${result.totalMatches} matches)</span>`;
+            
+            // Create URL
+            const urlEl = this.document.createElement('div');
+            urlEl.className = 'result-url';
+            urlEl.textContent = domain;
+            
+            // Create content preview
+            const previewEl = this.document.createElement('div');
+            previewEl.className = 'content-preview';
+            if (result.matches && result.matches.length > 0) {
+                const preview = result.matches[0].context;
+                previewEl.innerHTML = this.highlightMatch(this.escapeHtml(preview));
+            }
+            
+            content.appendChild(titleEl);
+            content.appendChild(urlEl);
+            content.appendChild(previewEl);
+            
+            // Create actions (indicators)
+            const actions = this.document.createElement('div');
+            actions.className = 'result-actions';
+            
+            const contentIndicator = this.document.createElement('span');
+            contentIndicator.className = 'content-indicator';
+            contentIndicator.textContent = '📄';
+            contentIndicator.title = 'Content match';
+            actions.appendChild(contentIndicator);
+            
+            if (tab.active) {
+                const activeIndicator = this.document.createElement('span');
+                activeIndicator.className = 'active-indicator';
+                activeIndicator.textContent = '●';
+                actions.appendChild(activeIndicator);
+            }
+            
+            // Assemble the result item
+            resultItem.appendChild(favicon);
+            resultItem.appendChild(content);
+            resultItem.appendChild(actions);
+            
+            this.results.appendChild(resultItem);
+        });
+        
+        this.log('✅ GoFaster: Rendered', this.contentResults.length, 'content results');
+    }
+    
+    renderTabResults() {
+        this.log('🎨 GoFaster: Rendering', this.filteredTabs.length, 'tab results');
+        
+        // Clear existing results
+        this.results.innerHTML = '';
+        
+        // Track current domain for grouping headers
+        let currentDomain = null;
         
         // Create result items using DOM manipulation for proper rendering
         this.filteredTabs.forEach((tab, index) => {
@@ -418,6 +608,15 @@ export class GoFasterCommandPalette {
             const title = tab.title || 'Untitled Tab';
             const url = tab.url || 'about:blank';
             const domain = this.extractDomain(url);
+            
+            // Add domain header if grouping is enabled and domain changed
+            if (this.groupByDomain && domain !== currentDomain) {
+                const domainHeader = this.document.createElement('div');
+                domainHeader.className = 'domain-header';
+                domainHeader.textContent = domain;
+                this.results.appendChild(domainHeader);
+                currentDomain = domain;
+            }
             
             // Create result item element
             const resultItem = this.document.createElement('div');
@@ -484,7 +683,7 @@ export class GoFasterCommandPalette {
             this.results.appendChild(resultItem);
         });
         
-        this.console.log('✅ GoFaster: Rendered', this.filteredTabs.length, 'results');
+        this.log('✅ GoFaster: Rendered', this.filteredTabs.length, 'tab results');
     }
     
     updateSelection() {
@@ -496,12 +695,15 @@ export class GoFasterCommandPalette {
         // Scroll selected item into view
         const selectedItem = items[this.selectedIndex];
         if (selectedItem && selectedItem.scrollIntoView) {
-            selectedItem.scrollIntoView({ block: 'nearest' });
+            selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
     }
     
     selectNext() {
-        this.selectedIndex = Math.min(this.selectedIndex + 1, this.filteredTabs.length - 1);
+        const maxIndex = this.searchMode === 'content' ? 
+            this.contentResults.length - 1 : 
+            this.filteredTabs.length - 1;
+        this.selectedIndex = Math.min(this.selectedIndex + 1, maxIndex);
         this.updateSelection();
     }
     
@@ -511,23 +713,65 @@ export class GoFasterCommandPalette {
     }
     
     async executeSelected() {
-        if (this.filteredTabs.length === 0) {
-            return false;
+        let selectedItem;
+        let tabId;
+        
+        if (this.searchMode === 'content' && this.contentResults.length > 0) {
+            if (this.selectedIndex >= this.contentResults.length) return false;
+            selectedItem = this.contentResults[this.selectedIndex];
+            tabId = selectedItem.tab.id;
+        } else {
+            if (this.filteredTabs.length === 0) return false;
+            selectedItem = this.filteredTabs[this.selectedIndex];
+            tabId = selectedItem.id;
         }
         
-        const selectedTab = this.filteredTabs[this.selectedIndex];
-        if (selectedTab) {
-            this.console.log('🎯 GoFaster: Switching to tab:', selectedTab.title);
+        if (selectedItem) {
+            const title = this.searchMode === 'content' ? selectedItem.tab.title : selectedItem.title;
+            this.log('🎯 GoFaster: Switching to tab:', title);
             
             try {
                 await this.sendMessage({
                     action: 'switchToTab',
-                    tabId: selectedTab.id
+                    tabId: tabId
                 });
                 this.close();
                 return true;
             } catch (error) {
-                this.console.error('❌ GoFaster: Error switching to tab:', error);
+                this.error('❌ GoFaster: Error switching to tab:', error);
+                return false;
+            }
+        }
+        return false;
+    }
+    
+    async executeSelected() {
+        let selectedItem;
+        let tabId;
+        
+        if (this.searchMode === 'content' && this.contentResults.length > 0) {
+            if (this.selectedIndex >= this.contentResults.length) return false;
+            selectedItem = this.contentResults[this.selectedIndex];
+            tabId = selectedItem.tab.id;
+        } else {
+            if (this.filteredTabs.length === 0) return false;
+            selectedItem = this.filteredTabs[this.selectedIndex];
+            tabId = selectedItem.id;
+        }
+        
+        if (selectedItem) {
+            const title = this.searchMode === 'content' ? selectedItem.tab.title : selectedItem.title;
+            this.log('🎯 GoFaster: Switching to tab:', title);
+            
+            try {
+                await this.sendMessage({
+                    action: 'switchToTab',
+                    tabId: tabId
+                });
+                this.close();
+                return true;
+            } catch (error) {
+                this.error('❌ GoFaster: Error switching to tab:', error);
                 return false;
             }
         }
@@ -539,7 +783,7 @@ export class GoFasterCommandPalette {
         
         const selectedTab = this.filteredTabs[this.selectedIndex];
         if (selectedTab) {
-            this.console.log('📌 GoFaster: Toggling pin for tab:', selectedTab.title);
+            this.log('📌 GoFaster: Toggling pin for tab:', selectedTab.title);
             
             // Calculate new state before sending message
             const newPinState = !selectedTab.pinned;
@@ -564,10 +808,10 @@ export class GoFasterCommandPalette {
                     this.renderResults();
                     this.updateSelection();
                 } else {
-                    this.console.error('❌ GoFaster: Pin operation failed:', response);
+                    this.error('❌ GoFaster: Pin operation failed:', response);
                 }
             } catch (error) {
-                this.console.error('❌ GoFaster: Error toggling pin:', error);
+                this.error('❌ GoFaster: Error toggling pin:', error);
             }
         }
     }
@@ -577,7 +821,7 @@ export class GoFasterCommandPalette {
         
         const selectedTab = this.filteredTabs[this.selectedIndex];
         if (selectedTab) {
-            this.console.log('🔇 GoFaster: Toggling mute for tab:', selectedTab.title);
+            this.log('🔇 GoFaster: Toggling mute for tab:', selectedTab.title);
             
             // Calculate new state before sending message
             const currentMuted = selectedTab.mutedInfo?.muted || false;
@@ -605,10 +849,10 @@ export class GoFasterCommandPalette {
                     this.renderResults();
                     this.updateSelection();
                 } else {
-                    this.console.error('❌ GoFaster: Mute operation failed:', response);
+                    this.error('❌ GoFaster: Mute operation failed:', response);
                 }
             } catch (error) {
-                this.console.error('❌ GoFaster: Error toggling mute:', error);
+                this.error('❌ GoFaster: Error toggling mute:', error);
             }
         }
     }
@@ -618,7 +862,7 @@ export class GoFasterCommandPalette {
         
         const selectedTab = this.filteredTabs[this.selectedIndex];
         if (selectedTab) {
-            this.console.log('🗑️ GoFaster: Closing tab:', selectedTab.title);
+            this.log('🗑️ GoFaster: Closing tab:', selectedTab.title);
             
             try {
                 await this.sendMessage({
@@ -638,14 +882,14 @@ export class GoFasterCommandPalette {
                 this.renderResults();
                 this.updateSelection();
             } catch (error) {
-                this.console.error('❌ GoFaster: Error closing tab:', error);
+                this.error('❌ GoFaster: Error closing tab:', error);
             }
         }
     }
     
     toggleGrouping() {
         this.groupByDomain = !this.groupByDomain;
-        this.console.log('📁 GoFaster: Toggling grouping:', this.groupByDomain ? 'ON' : 'OFF');
+        this.log('📁 GoFaster: Toggling grouping:', this.groupByDomain ? 'ON' : 'OFF');
         
         // Update results with new grouping
         this.updateResults();
@@ -653,6 +897,31 @@ export class GoFasterCommandPalette {
         // Reset selection to first item
         this.selectedIndex = 0;
         this.updateSelection();
+        
+        // Update footer to show current grouping state
+        this.updateFooter();
+    }
+    
+    showContextMenu(x, y) {
+        // Simple context menu implementation for testing
+        this.log('🖱️ GoFaster: Context menu requested at', x, y);
+        // In a real implementation, this would show a context menu
+        // For testing, we just log it
+    }
+    
+    updateFooter() {
+        const groupingText = this.groupByDomain ? 'Grouped' : 'List';
+        this.footer.innerHTML = `
+            <div class="shortcuts">
+                <span><kbd>↑↓</kbd> Navigate</span>
+                <span><kbd>Enter</kbd> Select</span>
+                <span><kbd>Ctrl+Shift+P</kbd> Pin</span>
+                <span><kbd>Ctrl+M</kbd> Mute</span>
+                <span><kbd>Del</kbd> Close</span>
+                <span><kbd>Ctrl+G</kbd> ${groupingText}</span>
+                <span><kbd>Esc</kbd> Exit</span>
+            </div>
+        `;
     }
     
     groupTabsByDomain(tabs) {

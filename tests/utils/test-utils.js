@@ -133,6 +133,52 @@ export function createMockChrome() {
                 } else {
                     callback({ success: false, error: 'Tab not found' });
                 }
+            } else if (message.action === 'searchContent') {
+                // Mock content search - simulate finding content in tabs
+                const query = message.query.toLowerCase();
+                const results = [];
+                
+                // Simulate content matches in some tabs
+                if (query.includes('error')) {
+                    results.push({
+                        tab: mockTabs[0], // GitHub tab
+                        matches: [
+                            {
+                                context: 'This function handles error cases gracefully and returns appropriate error messages',
+                                matchIndex: 18
+                            }
+                        ],
+                        totalMatches: 2
+                    });
+                }
+                
+                if (query.includes('javascript') || query.includes('js')) {
+                    results.push({
+                        tab: mockTabs[1], // Stack Overflow tab
+                        matches: [
+                            {
+                                context: 'JavaScript question about async functions and promises in modern development',
+                                matchIndex: 0
+                            }
+                        ],
+                        totalMatches: 1
+                    });
+                }
+                
+                if (query.includes('search')) {
+                    results.push({
+                        tab: mockTabs[2], // Google tab
+                        matches: [
+                            {
+                                context: 'Search results for your query with relevant information and links',
+                                matchIndex: 0
+                            }
+                        ],
+                        totalMatches: 3
+                    });
+                }
+                
+                callback({ success: true, results: results });
             } else {
                 callback({ error: 'Unknown action' });
             }
