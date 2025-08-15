@@ -1,361 +1,156 @@
-class TabManager {
+// GoFaster Popup - Settings and Help Interface
+class GoFasterPopup {
     constructor() {
-        this.tabs = [];
-        this.selectedTabs = new Set();
-        this.groupByDomain = false;
-        this.searchQuery = '';
-        this.debugMode = false;
+        this.extensionEnabled = true;
+        this.init();
+    }
+    
+    async init() {
+        console.log('🚀 GoFaster Popup: Initializing settings interface');
         
-        this.initializeDebugMode();
-        this.initializeElements();
+        // Load current settings
+        await this.loadSettings();
+        
+        // Bind events
         this.bindEvents();
-        this.loadTabs();
+        
+        // Update version info
+        this.updateVersionInfo();
+        
+        console.log('✅ GoFaster Popup: Initialized successfully');
     }
     
-    async initializeDebugMode() {
+    async loadSettings() {
         try {
-            const result = await chrome.storage.sync.get(['debugMode']);
-            this.debugMode = result.debugMode === true;
-            if (this.debugMode) {
-                this.log('🐛 GoFaster: Debug mode enabled in popup');
+            // Load extension enabled state from storage
+            const result = await chrome.storage.sync.get(['extensionEnabled']);
+            this.extensionEnabled = result.extensionEnabled !== false; // Default to true
+            
+            // Update toggle state
+            const toggle = document.getElementById('extensionEnabled');
+            if (toggle) {
+                toggle.checked = this.extensionEnabled;
             }
+            
+            console.log('📋 GoFaster Popup: Settings loaded', { extensionEnabled: this.extensionEnabled });
         } catch (error) {
-            // Silently fail
+            console.error('❌ GoFaster Popup: Failed to load settings:', error);
+            // Default to enabled if there's an error
+            this.extensionEnabled = true;
         }
     }
     
-    log(...args) {
-        if (this.debugMode) {
-            this.log(...args);
+    async saveSettings() {
+        try {
+            await chrome.storage.sync.set({
+                extensionEnabled: this.extensionEnabled
+            });
+            
+            // Notify content scripts of the change
+            const tabs = await chrome.tabs.query({});
+            for (const tab of tabs) {
+                try {
+                    await chrome.tabs.sendMessage(tab.id, {
+                        type: 'EXTENSION_TOGGLE',
+                        enabled: this.extensionEnabled
+                    });
+                } catch (error) {
+                    // Ignore errors for tabs that don't have content script
+                }
+            }
+            
+            console.log('💾 GoFaster Popup: Settings saved', { extensionEnabled: this.extensionEnabled });
+        } catch (error) {
+            console.error('❌ GoFaster Popup: Failed to save settings:', error);
         }
-    }
-    
-    warn(...args) {
-        if (this.debugMode) {
-            console.warn(...args);
-        }
-    }
-    
-    error(...args) {
-        // Always show errors
-        this.error('GoFaster:', ...args);
-    }
-    
-    initializeElements() {
-        this.searchInput = document.getElementById('searchInput');
-        this.tabList = document.getElementById('tabList');
-        this.tabCount = document.getElementById('tabCount');
-        this.selectedCount = document.getElementById('selectedCount');
-        this.closeSelectedBtn = document.getElementById('closeSelected');
-        this.selectAllBtn = document.getElementById('selectAll');
-        this.groupByDomainBtn = document.getElementById('groupByDomain');
-        this.refreshBtn = document.getElementById('refreshTabs');
     }
     
     bindEvents() {
-        this.searchInput.addEventListener('input', (e) => {
-            this.searchQuery = e.target.value.toLowerCase();
-            this.renderTabs();
-        });
+        // Extension enable/disable toggle
+        const toggle = document.getElementById('extensionEnabled');
+        if (toggle) {
+            toggle.addEventListener('change', (e) => {
+                this.extensionEnabled = e.target.checked;
+                this.saveSettings();
+                
+                console.log('🔄 GoFaster Popup: Extension toggled', { enabled: this.extensionEnabled });
+                
+                // Show visual feedback
+                this.showToggleFeedback(this.extensionEnabled);
+            });
+        }
         
-        this.closeSelectedBtn.addEventListener('click', () => {
-            this.closeSelectedTabs();
-        });
-        
-        this.selectAllBtn.addEventListener('click', () => {
-            this.toggleSelectAll();
-        });
-        
-        this.groupByDomainBtn.addEventListener('click', () => {
-            this.toggleGroupByDomain();
-        });
-        
-        this.refreshBtn.addEventListener('click', () => {
-            this.loadTabs();
-        });
-        
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Delete' && this.selectedTabs.size > 0) {
-                this.closeSelectedTabs();
-            }
-        });
-    }
-    
-    async loadTabs() {
-        try {
-            this.tabs = await chrome.tabs.query({});
-            this.selectedTabs.clear();
-            this.renderTabs();
-            this.updateStats();
-            
-            // Focus the search input when tabs are loaded
-            this.focusSearchInput();
-        } catch (error) {
-            this.error('Error loading tabs:', error);
+        // Help link click tracking (optional analytics)
+        const helpLink = document.querySelector('.help-link');
+        if (helpLink) {
+            helpLink.addEventListener('click', () => {
+                console.log('📖 GoFaster Popup: Help link clicked');
+            });
         }
     }
     
-    focusSearchInput() {
-        // Focus search input with multiple attempts for reliability
-        if (this.searchInput) {
-            this.searchInput.focus();
-            
-            // Backup focus attempts
-            setTimeout(() => {
-                if (document.activeElement !== this.searchInput) {
-                    this.searchInput.focus();
-                }
-            }, 50);
-            
-            setTimeout(() => {
-                if (document.activeElement !== this.searchInput) {
-                    this.searchInput.focus();
-                    this.searchInput.select();
-                }
-            }, 150);
-        }
-    }
-    
-    renderTabs() {
-        const filteredTabs = this.filterTabs();
-        
-        if (filteredTabs.length === 0) {
-            this.tabList.innerHTML = '<div class="no-tabs">No tabs found</div>';
-            return;
-        }
-        
-        if (this.groupByDomain) {
-            this.renderGroupedTabs(filteredTabs);
-        } else {
-            this.renderFlatTabs(filteredTabs);
-        }
-        
-        this.updateStats();
-    }
-    
-    filterTabs() {
-        if (!this.searchQuery) return this.tabs;
-        
-        return this.tabs.filter(tab => 
-            tab.title.toLowerCase().includes(this.searchQuery) ||
-            tab.url.toLowerCase().includes(this.searchQuery)
-        );
-    }
-    
-    renderFlatTabs(tabs) {
-        this.tabList.innerHTML = tabs.map(tab => this.createTabElement(tab)).join('');
-        this.bindTabEvents();
-    }
-    
-    renderGroupedTabs(tabs) {
-        const grouped = this.groupTabsByDomain(tabs);
-        let html = '';
-        
-        for (const [domain, domainTabs] of Object.entries(grouped)) {
-            html += `<div class="domain-group">${domain} (${domainTabs.length})</div>`;
-            html += domainTabs.map(tab => this.createTabElement(tab)).join('');
-        }
-        
-        this.tabList.innerHTML = html;
-        this.bindTabEvents();
-    }
-    
-    groupTabsByDomain(tabs) {
-        const grouped = {};
-        
-        tabs.forEach(tab => {
-            const domain = this.extractDomain(tab.url);
-            if (!grouped[domain]) {
-                grouped[domain] = [];
-            }
-            grouped[domain].push(tab);
-        });
-        
-        return grouped;
-    }
-    
-    extractDomain(url) {
-        try {
-            const urlObj = new URL(url);
-            return urlObj.hostname || 'Unknown';
-        } catch {
-            return 'Unknown';
-        }
-    }
-    
-    createTabElement(tab) {
-        const isSelected = this.selectedTabs.has(tab.id);
-        const favicon = tab.favIconUrl || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="%23f1f3f4"/></svg>';
-        
-        return `
-            <div class="tab-item ${tab.active ? 'active' : ''}" data-tab-id="${tab.id}">
-                <input type="checkbox" class="tab-checkbox" ${isSelected ? 'checked' : ''}>
-                <img class="tab-favicon" src="${favicon}" alt="">
-                <div class="tab-info">
-                    <div class="tab-title">${this.escapeHtml(tab.title)}</div>
-                    <div class="tab-url">${this.escapeHtml(tab.url)}</div>
-                </div>
-                <div class="tab-actions">
-                    ${tab.pinned ? '<button class="tab-action-btn tab-pinned" title="Unpin">📌</button>' : '<button class="tab-action-btn" title="Pin">📌</button>'}
-                    ${tab.audible ? '<button class="tab-action-btn tab-audible" title="Mute">🔊</button>' : ''}
-                    <button class="tab-action-btn" title="Close">✕</button>
-                </div>
-            </div>
+    showToggleFeedback(enabled) {
+        // Create a temporary feedback message
+        const feedback = document.createElement('div');
+        feedback.style.cssText = `
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: ${enabled ? '#34a853' : '#ea4335'};
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            z-index: 1000;
+            animation: fadeInOut 2s ease-in-out;
         `;
-    }
-    
-    bindTabEvents() {
-        // Tab click to switch
-        document.querySelectorAll('.tab-item').forEach(item => {
-            item.addEventListener('click', (e) => {
-                if (e.target.type === 'checkbox' || e.target.classList.contains('tab-action-btn')) {
-                    return;
-                }
-                
-                const tabId = parseInt(item.dataset.tabId);
-                this.switchToTab(tabId);
-            });
-        });
+        feedback.textContent = enabled ? '✅ GoFaster Enabled' : '❌ GoFaster Disabled';
         
-        // Checkbox events
-        document.querySelectorAll('.tab-checkbox').forEach(checkbox => {
-            checkbox.addEventListener('change', (e) => {
-                const tabId = parseInt(e.target.closest('.tab-item').dataset.tabId);
-                
-                if (e.target.checked) {
-                    this.selectedTabs.add(tabId);
-                } else {
-                    this.selectedTabs.delete(tabId);
-                }
-                
-                this.updateSelectedState();
-            });
-        });
+        // Add fade animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeInOut {
+                0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+                20% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                80% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+            }
+        `;
+        document.head.appendChild(style);
+        document.body.appendChild(feedback);
         
-        // Action button events
-        document.querySelectorAll('.tab-action-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const tabId = parseInt(e.target.closest('.tab-item').dataset.tabId);
-                const title = e.target.title;
-                
-                switch (title) {
-                    case 'Pin':
-                    case 'Unpin':
-                        this.togglePinTab(tabId);
-                        break;
-                    case 'Mute':
-                        this.muteTab(tabId);
-                        break;
-                    case 'Close':
-                        this.closeTab(tabId);
-                        break;
-                }
-            });
-        });
+        // Remove after animation
+        setTimeout(() => {
+            if (feedback.parentNode) {
+                feedback.parentNode.removeChild(feedback);
+            }
+            if (style.parentNode) {
+                style.parentNode.removeChild(style);
+            }
+        }, 2000);
     }
     
-    async switchToTab(tabId) {
-        try {
-            await chrome.tabs.update(tabId, { active: true });
-            const tab = await chrome.tabs.get(tabId);
-            await chrome.windows.update(tab.windowId, { focused: true });
-            window.close();
-        } catch (error) {
-            this.error('Error switching to tab:', error);
+    updateVersionInfo() {
+        const versionElement = document.getElementById('versionInfo');
+        if (versionElement) {
+            // Get version from manifest
+            const manifestData = chrome.runtime.getManifest();
+            versionElement.textContent = `v${manifestData.version}`;
         }
-    }
-    
-    async closeTab(tabId) {
-        try {
-            await chrome.tabs.remove(tabId);
-            this.selectedTabs.delete(tabId);
-            this.loadTabs();
-        } catch (error) {
-            this.error('Error closing tab:', error);
-        }
-    }
-    
-    async closeSelectedTabs() {
-        if (this.selectedTabs.size === 0) return;
-        
-        try {
-            await chrome.tabs.remove([...this.selectedTabs]);
-            this.selectedTabs.clear();
-            this.loadTabs();
-        } catch (error) {
-            this.error('Error closing selected tabs:', error);
-        }
-    }
-    
-    async togglePinTab(tabId) {
-        try {
-            const tab = await chrome.tabs.get(tabId);
-            await chrome.tabs.update(tabId, { pinned: !tab.pinned });
-            this.loadTabs();
-        } catch (error) {
-            this.error('Error toggling pin state:', error);
-        }
-    }
-    
-    async muteTab(tabId) {
-        try {
-            const tab = await chrome.tabs.get(tabId);
-            await chrome.tabs.update(tabId, { muted: !tab.mutedInfo.muted });
-            this.loadTabs();
-        } catch (error) {
-            this.error('Error muting tab:', error);
-        }
-    }
-    
-    toggleSelectAll() {
-        const filteredTabs = this.filterTabs();
-        const allSelected = filteredTabs.every(tab => this.selectedTabs.has(tab.id));
-        
-        if (allSelected) {
-            filteredTabs.forEach(tab => this.selectedTabs.delete(tab.id));
-        } else {
-            filteredTabs.forEach(tab => this.selectedTabs.add(tab.id));
-        }
-        
-        this.renderTabs();
-    }
-    
-    toggleGroupByDomain() {
-        this.groupByDomain = !this.groupByDomain;
-        this.groupByDomainBtn.style.background = this.groupByDomain ? '#e8f0fe' : '#f1f3f4';
-        this.renderTabs();
-    }
-    
-    updateSelectedState() {
-        this.closeSelectedBtn.disabled = this.selectedTabs.size === 0;
-        this.updateStats();
-    }
-    
-    updateStats() {
-        const filteredTabs = this.filterTabs();
-        this.tabCount.textContent = `${filteredTabs.length} tab${filteredTabs.length !== 1 ? 's' : ''}`;
-        this.selectedCount.textContent = `${this.selectedTabs.size} selected`;
-        this.closeSelectedBtn.disabled = this.selectedTabs.size === 0;
-    }
-    
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 }
 
-// Initialize the Tab Manager when the popup loads
+// Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    const tabManager = new TabManager();
-    
-    // Also focus immediately when popup opens
-    setTimeout(() => {
-        const searchInput = document.getElementById('searchInput');
-        if (searchInput) {
-            searchInput.focus();
-        }
-    }, 100);
+    new GoFasterPopup();
+});
+
+// Handle popup visibility changes
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        // Popup became visible, refresh settings
+        const popup = new GoFasterPopup();
+    }
 });

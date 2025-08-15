@@ -3,36 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GoFaster</title>
+    <title>GoFaster Settings</title>
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
     <div class="header">
         <h1>⚡ GoFaster</h1>
-        <div class="keyboard-hint">Press <kbd>Ctrl+P</kbd> for command palette</div>
-        <div class="controls">
-            <input type="text" id="searchInput" placeholder="Search tabs..." />
-            <div class="action-buttons">
-                <button id="groupByDomain" title="Group by Domain">🌐</button>
-                <button id="closeSelected" title="Close Selected" disabled>🗑️</button>
-                <button id="selectAll" title="Select All">☑️</button>
+        <p class="tagline">Lightning-fast tab navigation</p>
+    </div>
+    
+    <div class="settings-section">
+        <h2>Settings</h2>
+        <div class="setting-item">
+            <label class="toggle-container">
+                <span class="setting-label">Enable GoFaster</span>
+                <input type="checkbox" id="extensionEnabled" checked>
+                <span class="toggle-slider"></span>
+            </label>
+            <p class="setting-description">Enable or disable all GoFaster keyboard shortcuts</p>
+        </div>
+    </div>
+    
+    <div class="shortcuts-section">
+        <h2>Keyboard Shortcuts</h2>
+        <div class="shortcut-list">
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>Ctrl</kbd> + <kbd>P</kbd>
+                </div>
+                <div class="shortcut-description">Open tab search palette</div>
+            </div>
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>Ctrl</kbd> + <kbd>F</kbd>
+                </div>
+                <div class="shortcut-description">Search page content across tabs</div>
+            </div>
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd>
+                </div>
+                <div class="shortcut-description">Quick switch to last tab</div>
+            </div>
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>↑</kbd> <kbd>↓</kbd>
+                </div>
+                <div class="shortcut-description">Navigate results in palette</div>
+            </div>
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>Enter</kbd>
+                </div>
+                <div class="shortcut-description">Switch to selected tab</div>
+            </div>
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>Esc</kbd>
+                </div>
+                <div class="shortcut-description">Close palette</div>
             </div>
         </div>
     </div>
     
-    <div class="stats">
-        <span id="tabCount">0 tabs</span>
-        <span id="selectedCount">0 selected</span>
-    </div>
-    
-    <div class="tab-list" id="tabList">
-        <!-- Tabs will be populated here -->
+    <div class="vim-shortcuts-section">
+        <h2>Vim-Style Navigation</h2>
+        <div class="shortcut-list">
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>g</kbd> <kbd>g</kbd>
+                </div>
+                <div class="shortcut-description">Scroll to top of page</div>
+            </div>
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>Shift</kbd> + <kbd>G</kbd>
+                </div>
+                <div class="shortcut-description">Scroll to bottom of page</div>
+            </div>
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>Ctrl</kbd> + <kbd>D</kbd>
+                </div>
+                <div class="shortcut-description">Scroll down half page</div>
+            </div>
+            <div class="shortcut-item">
+                <div class="shortcut-keys">
+                    <kbd>Ctrl</kbd> + <kbd>U</kbd>
+                </div>
+                <div class="shortcut-description">Scroll up half page</div>
+            </div>
+        </div>
     </div>
     
     <div class="footer">
-        <button id="refreshTabs">🔄 Refresh</button>
-        <div class="shortcuts-info">
-            <span>💡 Use keyboard shortcuts for speed</span>
+        <a href="https://ataiva.com/gofaster-chrome-extension-help/" target="_blank" class="help-link">
+            📖 View Complete Help Guide
+        </a>
+        <div class="version-info">
+            <span id="versionInfo">v1.0.2</span>
         </div>
     </div>
     

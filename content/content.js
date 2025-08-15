@@ -13,6 +13,7 @@ class GoFasterCommandPalette {
         this.paletteMode = 'tabs'; // 'tabs' or 'content' - determines which palette is active
         this.debugMode = false; // Debug mode flag
         this.lastGKeyTime = null; // For vim gg mapping
+        this.extensionEnabled = true; // Extension enabled state
         
         // Initialize debug mode synchronously first, then async
         this.initializeDebugModeSync();
@@ -21,6 +22,9 @@ class GoFasterCommandPalette {
         
         this.createPalette();
         this.bindEvents();
+        
+        // Load extension settings
+        this.loadExtensionSettings();
         
         // Initialize debug mode async and test connection
         this.initializeAsync();
@@ -304,6 +308,11 @@ class GoFasterCommandPalette {
         
         // Listen for keyboard shortcuts
         document.addEventListener('keydown', (e) => {
+            // Skip all functionality if extension is disabled
+            if (!this.extensionEnabled) {
+                return;
+            }
+            
             // Vim mappings when palette is NOT open
             if (!this.isOpen) {
                 // Ctrl+D - Scroll down half page
@@ -536,7 +545,7 @@ class GoFasterCommandPalette {
         
         // Listen for messages from background script
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-            this.log('📨 GoFaster: Received message:', request.action);
+            this.log('📨 GoFaster: Received message:', request.action || request.type);
             
             if (request.action === 'openCommandPalette') {
                 const mode = request.mode || 'tabs';
@@ -552,8 +561,78 @@ class GoFasterCommandPalette {
                 if (this.isOpen) {
                     this.updateResults();
                 }
+            } else if (request.type === 'EXTENSION_TOGGLE') {
+                this.handleExtensionToggle(request.enabled);
             }
         });
+    }
+    
+    handleExtensionToggle(enabled) {
+        this.log('🔄 GoFaster: Extension toggled', { enabled });
+        this.extensionEnabled = enabled;
+        
+        if (!enabled && this.isOpen) {
+            // Close palette if extension is disabled
+            this.close();
+        }
+        
+        // Show visual feedback
+        this.showToggleFeedback(enabled);
+    }
+    
+    showToggleFeedback(enabled) {
+        // Create a temporary notification
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: ${enabled ? '#34a853' : '#ea4335'};
+            color: white;
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 2147483647;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            animation: slideInOut 3s ease-in-out;
+        `;
+        notification.textContent = enabled ? '⚡ GoFaster Enabled' : '❌ GoFaster Disabled';
+        
+        // Add animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideInOut {
+                0% { opacity: 0; transform: translateX(100%); }
+                15% { opacity: 1; transform: translateX(0); }
+                85% { opacity: 1; transform: translateX(0); }
+                100% { opacity: 0; transform: translateX(100%); }
+            }
+        `;
+        document.head.appendChild(style);
+        document.body.appendChild(notification);
+        
+        // Remove after animation
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+            if (style.parentNode) {
+                style.parentNode.removeChild(style);
+            }
+        }, 3000);
+    }
+    
+    async loadExtensionSettings() {
+        try {
+            const result = await chrome.storage.sync.get(['extensionEnabled']);
+            this.extensionEnabled = result.extensionEnabled !== false; // Default to true
+            this.log('📋 GoFaster: Extension enabled state loaded:', this.extensionEnabled);
+        } catch (error) {
+            this.warn('⚠️ GoFaster: Failed to load extension settings, defaulting to enabled:', error);
+            this.extensionEnabled = true;
+        }
     }
     
     showExtensionInvalidatedMessage() {
