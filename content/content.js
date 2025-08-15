@@ -14,6 +14,9 @@ class GoFasterCommandPalette {
         this.debugMode = false; // Debug mode flag
         this.lastGKeyTime = null; // For vim gg mapping
         this.extensionEnabled = true; // Extension enabled state
+        this.linkHintMode = false; // Link hint mode state
+        this.linkHints = []; // Array to store link hint elements
+        this.clickableElements = []; // Array to store clickable elements
         
         // Initialize debug mode synchronously first, then async
         this.initializeDebugModeSync();
@@ -369,6 +372,13 @@ class GoFasterCommandPalette {
                     window.scrollTo(0, document.body.scrollHeight);
                     return;
                 }
+                
+                // f - Enter link hint mode
+                if (e.key === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                    e.preventDefault();
+                    this.enterLinkHintMode();
+                    return;
+                }
             }
             
             // Ctrl+P / Cmd+P to open tab search palette
@@ -485,6 +495,23 @@ class GoFasterCommandPalette {
                             this.toggleDebugMode();
                         }
                         break;
+                }
+            }
+            
+            // Handle link hint mode
+            if (this.linkHintMode && !this.isOpen) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    this.exitLinkHintMode();
+                    return;
+                }
+                
+                // Check if pressed key matches any hint
+                const key = e.key.toLowerCase();
+                if (key.match(/[a-z]/)) {
+                    e.preventDefault();
+                    this.handleLinkHintKey(key);
+                    return;
                 }
             }
         });
@@ -1990,6 +2017,250 @@ class GoFasterCommandPalette {
             this.log('✅ GoFaster: Highlight script injected successfully');
         } catch (error) {
             this.error('❌ GoFaster: Failed to highlight in tab:', error);
+        }
+    }
+    
+    // Link hinting functionality
+    enterLinkHintMode() {
+        if (this.linkHintMode) return;
+        
+        this.log('🔗 GoFaster: Entering link hint mode');
+        this.linkHintMode = true;
+        
+        // Find all clickable elements
+        this.findClickableElements();
+        
+        // Generate and show hints
+        this.generateLinkHints();
+        
+        // Show visual feedback
+        this.showLinkHintFeedback();
+    }
+    
+    exitLinkHintMode() {
+        if (!this.linkHintMode) return;
+        
+        this.log('🔗 GoFaster: Exiting link hint mode');
+        this.linkHintMode = false;
+        
+        // Remove all hint elements
+        this.linkHints.forEach(hint => {
+            if (hint.parentNode) {
+                hint.parentNode.removeChild(hint);
+            }
+        });
+        
+        // Clear arrays
+        this.linkHints = [];
+        this.clickableElements = [];
+        
+        // Hide feedback
+        this.hideLinkHintFeedback();
+    }
+    
+    findClickableElements() {
+        const selectors = [
+            'a[href]',
+            'button',
+            'input[type="button"]',
+            'input[type="submit"]',
+            'input[type="reset"]',
+            '[onclick]',
+            '[role="button"]',
+            '[role="link"]',
+            'select',
+            'textarea',
+            'input[type="text"]',
+            'input[type="email"]',
+            'input[type="password"]',
+            'input[type="search"]',
+            'input[type="url"]',
+            'input[type="tel"]',
+            'input[type="number"]',
+            '[tabindex]:not([tabindex="-1"])'
+        ];
+        
+        const elements = document.querySelectorAll(selectors.join(', '));
+        this.clickableElements = Array.from(elements).filter(el => {
+            // Check if element is visible
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            
+            return rect.width > 0 && 
+                   rect.height > 0 && 
+                   style.visibility !== 'hidden' && 
+                   style.display !== 'none' &&
+                   rect.top < window.innerHeight &&
+                   rect.bottom > 0 &&
+                   rect.left < window.innerWidth &&
+                   rect.right > 0;
+        });
+        
+        this.log('🔗 GoFaster: Found', this.clickableElements.length, 'clickable elements');
+    }
+    
+    generateLinkHints() {
+        const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+        const hints = [];
+        
+        // Generate hint strings
+        for (let i = 0; i < this.clickableElements.length; i++) {
+            if (i < 26) {
+                hints.push(alphabet[i]);
+            } else {
+                // For more than 26 elements, use double letters
+                const first = Math.floor(i / 26) - 1;
+                const second = i % 26;
+                hints.push(alphabet[first] + alphabet[second]);
+            }
+        }
+        
+        // Create hint elements
+        this.clickableElements.forEach((element, index) => {
+            if (index >= hints.length) return;
+            
+            const hint = document.createElement('div');
+            hint.textContent = hints[index];
+            hint.className = 'gofaster-link-hint';
+            hint.style.cssText = `
+                position: absolute !important;
+                z-index: 2147483647 !important;
+                background: #ff6b35 !important;
+                color: white !important;
+                font-family: monospace !important;
+                font-size: 12px !important;
+                font-weight: bold !important;
+                padding: 2px 6px !important;
+                border-radius: 3px !important;
+                border: 1px solid #d63031 !important;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+                pointer-events: none !important;
+                user-select: none !important;
+                line-height: 1 !important;
+                min-width: 16px !important;
+                text-align: center !important;
+            `;
+            
+            // Position the hint
+            const rect = element.getBoundingClientRect();
+            hint.style.left = (rect.left + window.scrollX) + 'px';
+            hint.style.top = (rect.top + window.scrollY) + 'px';
+            
+            document.body.appendChild(hint);
+            this.linkHints.push(hint);
+        });
+        
+        this.log('🔗 GoFaster: Generated', this.linkHints.length, 'link hints');
+    }
+    
+    handleLinkHintKey(key) {
+        // Find matching hint
+        const matchingIndex = this.linkHints.findIndex(hint => 
+            hint.textContent.toLowerCase().startsWith(key)
+        );
+        
+        if (matchingIndex === -1) {
+            // No match, exit hint mode
+            this.exitLinkHintMode();
+            return;
+        }
+        
+        // Check for exact match
+        const exactMatch = this.linkHints.findIndex(hint => 
+            hint.textContent.toLowerCase() === key
+        );
+        
+        if (exactMatch !== -1) {
+            // Exact match found, click the element
+            const element = this.clickableElements[exactMatch];
+            this.clickElement(element);
+            this.exitLinkHintMode();
+            return;
+        }
+        
+        // Partial match - filter hints
+        const remainingHints = [];
+        const remainingElements = [];
+        
+        this.linkHints.forEach((hint, index) => {
+            if (hint.textContent.toLowerCase().startsWith(key)) {
+                // Update hint text to show remaining characters
+                hint.textContent = hint.textContent.substring(1);
+                remainingHints.push(hint);
+                remainingElements.push(this.clickableElements[index]);
+            } else {
+                // Remove non-matching hint
+                if (hint.parentNode) {
+                    hint.parentNode.removeChild(hint);
+                }
+            }
+        });
+        
+        this.linkHints = remainingHints;
+        this.clickableElements = remainingElements;
+        
+        // If only one hint remains and it's empty, click it
+        if (this.linkHints.length === 1 && this.linkHints[0].textContent === '') {
+            const element = this.clickableElements[0];
+            this.clickElement(element);
+            this.exitLinkHintMode();
+        }
+    }
+    
+    clickElement(element) {
+        this.log('🔗 GoFaster: Clicking element:', element.tagName, element.textContent?.substring(0, 50));
+        
+        // Scroll element into view
+        element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        
+        // Focus the element if it's focusable
+        if (element.focus) {
+            element.focus();
+        }
+        
+        // Click the element
+        if (element.click) {
+            element.click();
+        } else {
+            // Fallback: dispatch click event
+            const clickEvent = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            element.dispatchEvent(clickEvent);
+        }
+    }
+    
+    showLinkHintFeedback() {
+        // Create feedback message
+        const feedback = document.createElement('div');
+        feedback.id = 'gofaster-link-hint-feedback';
+        feedback.style.cssText = `
+            position: fixed !important;
+            top: 20px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            background: #2d3748 !important;
+            color: white !important;
+            padding: 8px 16px !important;
+            border-radius: 6px !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            z-index: 2147483647 !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+            pointer-events: none !important;
+        `;
+        feedback.textContent = '🔗 Link Hint Mode - Press a letter to click, Esc to cancel';
+        
+        document.body.appendChild(feedback);
+    }
+    
+    hideLinkHintFeedback() {
+        const feedback = document.getElementById('gofaster-link-hint-feedback');
+        if (feedback && feedback.parentNode) {
+            feedback.parentNode.removeChild(feedback);
         }
     }
 }
