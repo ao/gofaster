@@ -352,6 +352,11 @@ class GoFasterCommandPalette {
                     return;
                 }
                 
+                // Skip vim keys if in link hint mode (let link hint handler take precedence)
+                if (this.linkHintMode) {
+                    return;
+                }
+                
                 // gg - Go to top (need to handle double 'g')
                 if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
                     if (this.lastGKeyTime && Date.now() - this.lastGKeyTime < 500) {
