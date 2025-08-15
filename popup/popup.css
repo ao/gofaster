@@ -32,6 +32,12 @@ body {
     gap: 8px;
 }
 
+.header-icon {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
 .tagline {
     font-size: 13px;
     color: #5f6368;
